@@ -1,0 +1,127 @@
+﻿@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-base:         #070c14;
+  --bg-surface:      #0d1422;
+  --bg-elevated:     #111927;
+  --bg-hover:        #161f30;
+  --border:          rgba(255,255,255,0.07);
+  --border-bright:   rgba(255,255,255,0.13);
+  --accent-cyan:     #00d9b8;
+  --accent-cyan-dim: rgba(0,217,184,0.1);
+  --accent-indigo:   #818cf8;
+  --text-primary:    #e2e8f0;
+  --text-muted:      #64748b;
+  --text-dim:        #3d4f66;
+  --sidebar-w:       228px;
+  --status-open:     #38bdf8;
+  --status-progress: #f59e0b;
+  --status-hold:     #a78bfa;
+  --status-done:     #34d399;
+  --status-closed:   #475569;
+  --status-urgent:   #f87171;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono, code { font-family: 'JetBrains Mono', 'Fira Code', monospace \!important; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,217,184,0.4); }
+
+::selection { background: rgba(0,217,184,0.2); color: #fff; }
+
+.grid-texture {
+  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.glow-cyan { box-shadow: 0 0 24px rgba(0,217,184,0.15); }
+.text-glow-cyan { text-shadow: 0 0 14px rgba(0,217,184,0.5); }
+
+.priority-urgent { border-left: 3px solid #f87171 \!important; }
+.priority-high    { border-left: 3px solid #fb923c \!important; }
+.priority-medium  { border-left: 3px solid #fbbf24 \!important; }
+.priority-low     { border-left: 3px solid #334155 \!important; }
+
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.status-dot.open     { background: var(--status-open);     box-shadow: 0 0 6px var(--status-open); }
+.status-dot.progress { background: var(--status-progress); box-shadow: 0 0 6px var(--status-progress); }
+.status-dot.hold     { background: var(--status-hold);     box-shadow: 0 0 6px var(--status-hold); }
+.status-dot.done     { background: var(--status-done);     box-shadow: 0 0 6px var(--status-done); }
+.status-dot.closed   { background: var(--status-closed); }
+.status-dot.urgent   { background: var(--status-urgent);   box-shadow: 0 0 8px var(--status-urgent); }
+
+@keyframes urgent-pulse {
+  0%, 100% { box-shadow: 0 0 4px #f87171, 0 0 8px #f87171; }
+  50%       { box-shadow: 0 0 10px #f87171, 0 0 20px rgba(248,113,113,0.35); }
+}
+.status-dot.urgent { animation: urgent-pulse 2s ease-in-out infinite; }
+
+.nav-active {
+  background: rgba(0,217,184,0.08) \!important;
+  border-left: 2px solid var(--accent-cyan) \!important;
+  color: var(--accent-cyan) \!important;
+}
+
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.row-in { animation: row-in 0.18s ease-out both; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+.animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+/* Row hover utility — used in server-rendered list pages */
+.hover-row:hover { background: var(--bg-elevated) !important; }
+.hover-row-surface:hover { background: var(--bg-surface) !important; }
+
+/* Section label */
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+/* Filter chip */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.07);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  transition: border-color 0.12s, color 0.12s;
+  text-decoration: none;
+}
+.filter-chip:hover {
+  border-color: rgba(0,217,184,0.3);
+  color: var(--accent-cyan);
+}
+.filter-chip.active {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(0,217,184,0.07);
+}

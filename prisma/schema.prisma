@@ -1,0 +1,506 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  COLABORADOR
+  AUXILIAR_TI
+  TECNICO
+  ADMIN
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  DONE
+  CANCELED
+}
+
+enum TicketEventType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COLLABORATOR_ADDED
+  COLLABORATOR_REMOVED
+  COMMENTED
+  NOTE_ADDED
+  SOLUTION_ADDED
+  MOVEMENT_LINKED
+  MOVEMENT_COMPLETED
+  CLOSED
+  REOPENED
+}
+
+enum MessageVisibility {
+  PUBLIC      // visível a todos
+  TECHNICIANS // visível apenas para equipe TI
+  AUTHOR      // visível apenas para quem enviou
+}
+
+enum AssetStatus {
+  STOCK
+  DEPLOYED
+  MAINTENANCE
+  DISCARDED
+  LOANED
+}
+
+enum StorageType {
+  HDD
+  SSD_SATA
+  SSD_NVME
+}
+
+enum CpuBrand {
+  INTEL
+  AMD
+  OTHER
+}
+
+enum PerformanceLabel {
+  RUIM
+  INTERMEDIARIO
+  BOM
+}
+
+enum MovementType {
+  CHECK_IN
+  CHECK_OUT
+  TRANSFER
+  SWAP
+  MAINT_START
+  MAINT_END
+  DISCARD
+  LOAN
+  RETURN
+}
+
+enum MovementOrderStatus {
+  DRAFT
+  IN_PROGRESS
+  DONE
+  CANCELED
+}
+
+enum OrderItemAction {
+  REMOVE_ASSET
+  ASSIGN_ASSET
+  SEND_MAINTENANCE
+  RETURN_STOCK
+  DISCARD_ASSET
+  LOAN_ASSET
+  RETURN_LOAN
+}
+
+enum OrderItemStatus {
+  PENDING
+  DONE
+  CANCELED
+}
+
+// ─────────────────────────────────────────────
+// DEPARTMENTS
+// ─────────────────────────────────────────────
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String?  @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users   User[]
+  tickets Ticket[]
+
+  @@map("departments")
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(COLABORADOR)
+  active       Boolean  @default(true)
+  avatarUrl    String?  @map("avatar_url")
+
+  departmentId String?     @map("department_id")
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ticketsAsRequester   Ticket[]             @relation("TicketRequester")
+  ticketsAsOpener      Ticket[]             @relation("TicketOpenedBy")
+  ticketsAsAssignee    Ticket[]             @relation("TicketAssignee")
+  ticketCollaborations TicketCollaborator[]
+  ticketMessages       TicketMessage[]
+  ticketEvents         TicketEvent[]
+  ticketSolutions      TicketSolution[]
+
+  assignedAssets  Asset[]         @relation("AssetAssignedTo")
+  movementsFrom   AssetMovement[] @relation("MovementFromUser")
+  movementsTo     AssetMovement[] @relation("MovementToUser")
+  movementsActor  AssetMovement[] @relation("MovementActor")
+  ordersInitiated MovementOrder[] @relation("OrderActor")
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// TICKET CATEGORIES
+// ─────────────────────────────────────────────
+
+model TicketCategory {
+  id               String         @id @default(cuid())
+  name             String         @unique
+  description      String?
+  requiresMovement Boolean        @default(false) @map("requires_movement")
+  icon             String?
+  active           Boolean        @default(true)
+  sortOrder        Int            @default(0) @map("sort_order")
+  defaultPriority  TicketPriority @default(MEDIUM) @map("default_priority")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tickets   Ticket[]
+  slas      SlaPolicy[]
+  solutions TicketSolution[]
+
+  @@map("ticket_categories")
+}
+
+// ─────────────────────────────────────────────
+// SLA POLICIES
+// ─────────────────────────────────────────────
+
+model SlaPolicy {
+  id                String          @id @default(cuid())
+  name              String
+  categoryId        String?         @map("category_id")
+  category          TicketCategory? @relation(fields: [categoryId], references: [id])
+  priority          TicketPriority?
+  responseMinutes   Int             @map("response_minutes")
+  resolutionMinutes Int             @map("resolution_minutes")
+  active            Boolean         @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sla_policies")
+}
+
+// ─────────────────────────────────────────────
+// TICKETS
+// ─────────────────────────────────────────────
+
+model Ticket {
+  id   String @id @default(cuid())
+  code String @unique
+
+  title       String
+  description String
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+
+  categoryId String         @map("category_id")
+  category   TicketCategory @relation(fields: [categoryId], references: [id])
+
+  requesterId String @map("requester_id")
+  requester   User   @relation("TicketRequester", fields: [requesterId], references: [id])
+
+  openedById String? @map("opened_by_id")
+  openedBy   User?   @relation("TicketOpenedBy", fields: [openedById], references: [id])
+
+  departmentId String?     @map("department_id")
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id])
+
+  slaResponseDue   DateTime? @map("sla_response_due")
+  slaResolutionDue DateTime? @map("sla_resolution_due")
+  slaBreached      Boolean   @default(false) @map("sla_breached")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  closedAt  DateTime? @map("closed_at")
+
+  messages       TicketMessage[]
+  events         TicketEvent[]
+  movementOrders MovementOrder[]
+  assetMovements AssetMovement[]
+  collaborators  TicketCollaborator[]
+  solutions      TicketSolution[]
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([requesterId])
+  @@index([categoryId])
+  @@index([departmentId])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+// ─────────────────────────────────────────────
+// TICKET COLLABORATORS (técnicos extras)
+// ─────────────────────────────────────────────
+
+model TicketCollaborator {
+  ticketId String   @map("ticket_id")
+  userId   String   @map("user_id")
+  addedAt  DateTime @default(now()) @map("added_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@id([ticketId, userId])
+  @@index([ticketId])
+  @@map("ticket_collaborators")
+}
+
+// ─────────────────────────────────────────────
+// TICKET MESSAGES (CHAT)
+// ─────────────────────────────────────────────
+
+model TicketMessage {
+  id         String            @id @default(cuid())
+  ticketId   String            @map("ticket_id")
+  ticket     Ticket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId   String            @map("author_id")
+  author     User              @relation(fields: [authorId], references: [id])
+  body       String
+  isNote     Boolean           @default(false) @map("is_note")
+  visibility MessageVisibility @default(PUBLIC)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@map("ticket_messages")
+}
+
+// ─────────────────────────────────────────────
+// TICKET SOLUTIONS (base de conhecimento)
+// ─────────────────────────────────────────────
+
+model TicketSolution {
+  id          String         @id @default(cuid())
+  ticketId    String         @map("ticket_id")
+  ticket      Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  categoryId  String         @map("category_id")
+  category    TicketCategory @relation(fields: [categoryId], references: [id])
+  title       String
+  body        String
+  createdById String         @map("created_by_id")
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  @@index([categoryId])
+  @@map("ticket_solutions")
+}
+
+// ─────────────────────────────────────────────
+// TICKET EVENTS (AUDITORIA)
+// ─────────────────────────────────────────────
+
+model TicketEvent {
+  id       String          @id @default(cuid())
+  ticketId String          @map("ticket_id")
+  ticket   Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId  String?         @map("actor_id")
+  actor    User?           @relation(fields: [actorId], references: [id])
+  type     TicketEventType
+  payload  Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@map("ticket_events")
+}
+
+// ─────────────────────────────────────────────
+// ASSET CATEGORIES
+// ─────────────────────────────────────────────
+
+model AssetCategory {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  icon   String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assets Asset[]
+
+  @@map("asset_categories")
+}
+
+// ─────────────────────────────────────────────
+// ASSETS (PATRIMÔNIO)
+// ─────────────────────────────────────────────
+
+model Asset {
+  id   String @id @default(cuid())
+  tag  String @unique
+  name String
+
+  categoryId String        @map("category_id")
+  category   AssetCategory @relation(fields: [categoryId], references: [id])
+
+  status AssetStatus @default(STOCK)
+
+  assignedToUserId String? @map("assigned_to_user_id")
+  assignedToUser   User?   @relation("AssetAssignedTo", fields: [assignedToUserId], references: [id])
+
+  location        String?
+  serialNumber    String?  @map("serial_number")
+  acquisitionCost Decimal? @map("acquisition_cost") @db.Decimal(12, 2)
+  currentValue    Decimal? @map("current_value") @db.Decimal(12, 2)
+  acquisitionDate DateTime? @map("acquisition_date")
+  warrantyUntil   DateTime? @map("warranty_until")
+
+  notes String?
+
+  ramGb         Int?         @map("ram_gb")
+  storageType   StorageType? @map("storage_type")
+  storageGb     Int?         @map("storage_gb")
+  cpuBrand      CpuBrand?    @map("cpu_brand")
+  cpuModel      String?      @map("cpu_model")
+  cpuGeneration Int?         @map("cpu_generation")
+
+  performanceScore Int?              @map("performance_score")
+  performanceLabel PerformanceLabel? @map("performance_label")
+  performanceNotes String?           @map("performance_notes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  movements         AssetMovement[]
+  orderItemsAsAsset MovementOrderItem[]
+
+  @@index([status])
+  @@index([assignedToUserId])
+  @@index([categoryId])
+  @@index([performanceLabel])
+  @@map("assets")
+}
+
+// ─────────────────────────────────────────────
+// ASSET MOVEMENTS
+// ─────────────────────────────────────────────
+
+model AssetMovement {
+  id      String       @id @default(cuid())
+  assetId String       @map("asset_id")
+  asset   Asset        @relation(fields: [assetId], references: [id])
+  type    MovementType
+
+  fromUserId String? @map("from_user_id")
+  fromUser   User?   @relation("MovementFromUser", fields: [fromUserId], references: [id])
+
+  toUserId String? @map("to_user_id")
+  toUser   User?   @relation("MovementToUser", fields: [toUserId], references: [id])
+
+  fromLocation String? @map("from_location")
+  toLocation   String? @map("to_location")
+
+  fromStatus AssetStatus? @map("from_status")
+  toStatus   AssetStatus? @map("to_status")
+
+  ticketId String? @map("ticket_id")
+  ticket   Ticket? @relation(fields: [ticketId], references: [id])
+
+  orderId String?        @map("order_id")
+  order   MovementOrder? @relation(fields: [orderId], references: [id])
+
+  actorId String @map("actor_id")
+  actor   User   @relation("MovementActor", fields: [actorId], references: [id])
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([assetId])
+  @@index([ticketId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("asset_movements")
+}
+
+// ─────────────────────────────────────────────
+// MOVEMENT ORDERS
+// ─────────────────────────────────────────────
+
+model MovementOrder {
+  id     String              @id @default(cuid())
+  status MovementOrderStatus @default(DRAFT)
+
+  ticketId String? @map("ticket_id")
+  ticket   Ticket? @relation(fields: [ticketId], references: [id])
+
+  actorId String @map("actor_id")
+  actor   User   @relation("OrderActor", fields: [actorId], references: [id])
+
+  notes String?
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  items     MovementOrderItem[]
+  movements AssetMovement[]
+
+  @@index([ticketId])
+  @@index([status])
+  @@map("movement_orders")
+}
+
+// ─────────────────────────────────────────────
+// MOVEMENT ORDER ITEMS
+// ─────────────────────────────────────────────
+
+model MovementOrderItem {
+  id      String          @id @default(cuid())
+  orderId String          @map("order_id")
+  order   MovementOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  action  OrderItemAction
+  status  OrderItemStatus @default(PENDING)
+
+  assetId        String? @map("asset_id")
+  asset          Asset?  @relation(fields: [assetId], references: [id])
+  targetUserId   String? @map("target_user_id")
+  targetLocation String? @map("target_location")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@map("movement_order_items")
+}
