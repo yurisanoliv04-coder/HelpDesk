@@ -81,6 +81,25 @@ enum PerformanceLabel {
   BOM
 }
 
+enum SystemKey {
+  DISCORD
+  INUV
+  ONVIO
+  TRELLO
+  CLASSROOM
+  WINDOWS
+  DOMINIO
+  ONECODE
+  MATTERMOST
+  CHAT_ITA
+}
+
+enum AccessStatus {
+  OK
+  PENDING
+  NA
+}
+
 enum MovementType {
   CHECK_IN
   CHECK_OUT
@@ -150,9 +169,18 @@ model User {
   departmentId String?     @map("department_id")
   department   Department? @relation(fields: [departmentId], references: [id])
 
+  // Profile fields (from IT user-control spreadsheet)
+  entryDate     DateTime? @map("entry_date")
+  exitDate      DateTime? @map("exit_date")
+  birthday      DateTime?
+  phone         String?
+  windowsUser   String?   @map("windows_user")
+  domainAccount String?   @map("domain_account")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  systemAccesses       UserSystemAccess[]
   ticketsAsRequester   Ticket[]             @relation("TicketRequester")
   ticketsAsOpener      Ticket[]             @relation("TicketOpenedBy")
   ticketsAsAssignee    Ticket[]             @relation("TicketAssignee")
@@ -168,6 +196,25 @@ model User {
   ordersInitiated MovementOrder[] @relation("OrderActor")
 
   @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// USER SYSTEM ACCESSES
+// ─────────────────────────────────────────────
+
+model UserSystemAccess {
+  id        String       @id @default(cuid())
+  userId    String       @map("user_id")
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  system    SystemKey
+  status    AccessStatus @default(PENDING)
+  notes     String?      // e.g. username in that system
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, system])
+  @@index([userId])
+  @@map("user_system_accesses")
 }
 
 // ─────────────────────────────────────────────

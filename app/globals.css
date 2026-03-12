@@ -92,6 +92,12 @@ body {
 .hover-row:hover { background: var(--bg-elevated) !important; }
 .hover-row-surface:hover { background: var(--bg-surface) !important; }
 
+/* Interactive cell inside a hover-row (Local, Alocado para) */
+.interactive-cell { border-radius: 5px; padding: 2px 4px; margin: -2px -4px; transition: background 0.12s, color 0.12s; }
+.interactive-cell:hover { background: rgba(0,217,184,0.1); color: #00d9b8 !important; }
+.interactive-cell:hover span { color: #00d9b8 !important; }
+.interactive-cell:hover svg path { stroke: #00d9b8 !important; }
+
 /* Section label */
 .section-label {
   font-family: 'JetBrains Mono', monospace;
