@@ -2,257 +2,417 @@ import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, HardDrive, Cpu, CircleCheck, Clock, AlertCircle } from 'lucide-react'
-import { AssetPerformanceCard } from '@/components/assets/AssetPerformanceCard'
+import {
+  Laptop, Monitor, Printer, Keyboard, MousePointer,
+  Headphones, Battery, Network, Smartphone, Package,
+  Cpu, HardDrive, Server, Tablet, Camera,
+  ArrowRight, ArrowLeft, ArrowLeftRight, Repeat2,
+  Wrench, CheckCircle2, Trash2, Share2, CornerDownLeft,
+  User, type LucideProps,
+} from 'lucide-react'
+import AssetTabBar from '@/components/assets/AssetTabBar'
+import AssetEditPanel from '@/components/assets/AssetEditPanel'
+import AssetNotesPanel from '@/components/assets/AssetNotesPanel'
+import AssetFilesPanel from '@/components/assets/AssetFilesPanel'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
-const statusLabel: Record<string, string> = {
-  STOCK: 'Estoque', DEPLOYED: 'Implantado', MAINTENANCE: 'Manutenção',
-  DISCARDED: 'Descartado', LOANED: 'Emprestado',
+// ─── Icon map ─────────────────────────────────────────────────────────────────
+const iconMap: Record<string, React.ComponentType<LucideProps>> = {
+  laptop: Laptop, monitor: Monitor, printer: Printer, keyboard: Keyboard,
+  'mouse-pointer': MousePointer, headphones: Headphones, battery: Battery,
+  network: Network, smartphone: Smartphone, package: Package,
+  cpu: Cpu, 'hard-drive': HardDrive, server: Server, tablet: Tablet, camera: Camera,
 }
-const statusConfig: Record<string, { bg: string; text: string; icon: string }> = {
-  STOCK: { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', icon: '◇' },
-  DEPLOYED: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', icon: '✓' },
-  MAINTENANCE: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', icon: '⚙' },
-  DISCARDED: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', icon: '✕' },
-  LOANED: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', icon: '↔' },
-}
-const movementLabel: Record<string, string> = {
-  CHECK_IN: 'Entrada', CHECK_OUT: 'Saída', TRANSFER: 'Transferência',
-  SWAP: 'Troca', MAINT_START: 'Início Manutenção', MAINT_END: 'Fim Manutenção',
-  DISCARD: 'Descarte', LOAN: 'Empréstimo', RETURN: 'Devolução',
-}
-const movementColorMap: Record<string, string> = {
-  CHECK_IN: 'text-emerald-600 dark:text-emerald-400',
-  CHECK_OUT: 'text-blue-600 dark:text-blue-400',
-  TRANSFER: 'text-purple-600 dark:text-purple-400',
-  SWAP: 'text-amber-600 dark:text-amber-400',
-  MAINT_START: 'text-orange-600 dark:text-orange-400',
-  MAINT_END: 'text-emerald-600 dark:text-emerald-400',
-  DISCARD: 'text-red-600 dark:text-red-400',
-  LOAN: 'text-blue-600 dark:text-blue-400',
-  RETURN: 'text-emerald-600 dark:text-emerald-400',
+function CategoryIcon({ name, size = 20 }: { name: string | null; size?: number }) {
+  const Icon = name ? iconMap[name] : null
+  return Icon ? <Icon size={size} color="#3d5068" /> : <Package size={size} color="#3d5068" />
 }
 
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  }).format(date)
+// ─── Config maps ──────────────────────────────────────────────────────────────
+const statusConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  STOCK:       { label: 'Estoque',    color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)' },
+  DEPLOYED:    { label: 'Implantado', color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.2)'  },
+  MAINTENANCE: { label: 'Manutenção', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.2)'  },
+  DISCARDED:   { label: 'Descartado', color: '#f87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
+  LOANED:      { label: 'Emprestado', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.2)'  },
+}
+const movementCfg: Record<string, { label: string; color: string; borderColor: string; Icon: React.ComponentType<LucideProps> }> = {
+  CHECK_IN:    { label: 'Retorno ao estoque',      color: '#94a3b8', borderColor: 'rgba(148,163,184,0.3)', Icon: ArrowLeft      },
+  CHECK_OUT:   { label: 'Retirada / Alocação',     color: '#34d399', borderColor: 'rgba(52,211,153,0.3)',  Icon: ArrowRight     },
+  TRANSFER:    { label: 'Transferência',           color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)',  Icon: ArrowLeftRight },
+  SWAP:        { label: 'Troca',                   color: '#a78bfa', borderColor: 'rgba(167,139,250,0.3)', Icon: Repeat2        },
+  MAINT_START: { label: 'Enviado p/ manutenção',  color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)',  Icon: Wrench         },
+  MAINT_END:   { label: 'Retorno de manutenção',  color: '#34d399', borderColor: 'rgba(52,211,153,0.3)',  Icon: CheckCircle2   },
+  DISCARD:     { label: 'Descartado',              color: '#f87171', borderColor: 'rgba(248,113,113,0.3)', Icon: Trash2         },
+  LOAN:        { label: 'Empréstimo',              color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)',  Icon: Share2         },
+  RETURN:      { label: 'Devolução',               color: '#f87171', borderColor: 'rgba(248,113,113,0.3)', Icon: CornerDownLeft },
 }
 
-export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function fmt(d: Date | null | undefined) {
+  if (!d) return '—'
+  return format(d, 'dd/MM/yyyy', { locale: ptBR })
+}
+function fmtFull(d: Date) {
+  return format(d, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+export default async function AssetDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   const session = await auth()
-  if (session?.user.role === 'COLABORADOR') redirect('/assets')
+  if (session?.user.role === 'COLABORADOR' || session?.user.role === 'AUXILIAR_TI') redirect('/dashboard')
 
   const { id } = await params
+  const { tab: rawTab } = await searchParams
+  const VALID_TABS = ['geral', 'historico', 'notas', 'arquivos'] as const
+  type TabKey = typeof VALID_TABS[number]
+  const activeTab: TabKey = VALID_TABS.includes(rawTab as TabKey) ? (rawTab as TabKey) : 'geral'
 
+  const canEdit = session?.user.role === 'TECNICO' || session?.user.role === 'ADMIN'
+  const isAdmin = session?.user.role === 'ADMIN'
+
+  // ── Base query ─────────────────────────────────────────────────────────────
   const asset = await prisma.asset.findUnique({
     where: { id },
     include: {
       category: true,
       assignedToUser: { select: { id: true, name: true } },
-      movements: {
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        include: {
-          fromUser: { select: { name: true } },
-          toUser: { select: { name: true } },
-          actor: { select: { name: true } },
-          ticket: { select: { code: true } },
-        },
-      },
+      assetNotes: { select: { id: true } },
+      assetFiles: { select: { id: true } },
+      _count: { select: { movements: true } },
     },
   })
 
   if (!asset) notFound()
 
-  const statusInfo = statusConfig[asset.status]
+  // ── Tab-specific data ──────────────────────────────────────────────────────
+  const movements = activeTab === 'historico'
+    ? await prisma.assetMovement.findMany({
+        where: { assetId: id },
+        include: {
+          fromUser: { select: { id: true, name: true } },
+          toUser:   { select: { id: true, name: true } },
+          actor:    { select: { id: true, name: true } },
+          ticket:   { select: { id: true, code: true, title: true } },
+          order:    { select: { id: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null
+
+  const notes = activeTab === 'notas'
+    ? await prisma.assetNote.findMany({
+        where: { assetId: id },
+        include: { author: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null
+
+  const files = activeTab === 'arquivos'
+    ? await prisma.assetFile.findMany({
+        where: { assetId: id },
+        include: { uploadedBy: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const sc = statusConfig[asset.status] ?? statusConfig.STOCK
+  const notesCount = asset.assetNotes.length
+  const filesCount = asset.assetFiles.length
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <div className="max-w-6xl mx-auto p-6 space-y-6">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/assets" className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 transition-colors">
-            <ArrowLeft size={16} />
-            Patrimônio
-          </Link>
-          <span className="text-slate-400 dark:text-slate-600">/</span>
-          <span className="font-mono text-slate-700 dark:text-slate-300">{asset.tag}</span>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* ── Breadcrumb ───────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Link href="/assets" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', textDecoration: 'none', letterSpacing: '0.1em' }}>
+          PATRIMÔNIO
+        </Link>
+        <span style={{ color: '#1e3048', fontSize: 10 }}>/</span>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#00d9b8', letterSpacing: '0.1em' }}>
+          {asset.tag}
+        </span>
+      </div>
+
+      {/* ── Header card ──────────────────────────────────────────────────── */}
+      <div style={{
+        background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 16, padding: '28px 32px',
+        display: 'flex', alignItems: 'flex-start', gap: 24,
+      }}>
+        {/* Category icon */}
+        <div style={{
+          width: 72, height: 72, borderRadius: 16, flexShrink: 0,
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 0 20px rgba(0,0,0,0.3)',
+        }}>
+          <CategoryIcon name={asset.category.icon} size={28} />
         </div>
 
-        {/* Header Card */}
-        <div className="relative overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
-          <div className="p-8">
-            <div className="flex items-start justify-between gap-6 flex-wrap mb-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="font-mono text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                    {asset.tag}
-                  </span>
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${statusInfo.bg} ${statusInfo.text}`}>
-                    <span>{statusInfo.icon}</span>
-                    {statusLabel[asset.status]}
-                  </span>
-                </div>
-                <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-1">{asset.name}</h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400">{asset.category.name}</p>
+        {/* Name + badges + meta */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: '#e2eaf4', lineHeight: 1 }}>
+              {asset.name}
+            </h1>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+              padding: '3px 10px', borderRadius: 5,
+              background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', color: '#38bdf8',
+            }}>
+              {asset.tag}
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '3px 10px', borderRadius: 5,
+              background: sc.bg, border: `1px solid ${sc.border}`,
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: sc.color,
+            }}>
+              {sc.label}
+            </span>
+          </div>
+
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#3d5068', marginTop: 6 }}>
+            {asset.category.name}
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px 24px', marginTop: 20 }}>
+            {asset.location && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em', fontWeight: 700 }}>LOCALIZAÇÃO</span>
+                <span style={{ fontSize: 13, color: '#c8d6e5' }}>{asset.location}</span>
               </div>
-              {asset.assignedToUser && (
-                <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600">
-                  <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Usuário atual</p>
-                  <p className="font-semibold text-slate-900 dark:text-white">{asset.assignedToUser.name}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Meta grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <MetaField label="Localização" value={asset.location ?? '—'} icon={<MapPin size={16} />} />
-              <MetaField label="Nº de série" value={asset.serialNumber ?? '—'} icon={<HardDrive size={16} />} />
-              <MetaField label="Data de aquisição" value={asset.acquisitionDate ? formatDate(asset.acquisitionDate) : '—'} icon={<Clock size={16} />} />
-              <MetaField label="Status" value={statusLabel[asset.status]} icon={<CircleCheck size={16} />} />
-            </div>
-          </div>
-        </div>
-
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column - Performance */}
-          <div className="lg:col-span-1">
-            <AssetPerformanceCard
-              score={asset.performanceScore}
-              label={asset.performanceLabel as any}
-              notes={asset.performanceNotes || undefined}
-            />
-          </div>
-
-          {/* Right column - Specs and Financial */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Hardware Specs */}
-            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <Cpu size={20} className="text-slate-700 dark:text-slate-300" />
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Especificações de Hardware</h2>
+            )}
+            {asset.serialNumber && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em', fontWeight: 700 }}>Nº DE SÉRIE</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#c8d6e5' }}>{asset.serialNumber}</span>
               </div>
-              {!asset.ramGb && !asset.cpuModel && !asset.storageType ? (
-                <p className="text-slate-500 dark:text-slate-400 text-sm">Nenhuma especificação cadastrada.</p>
-              ) : (
-                <div className="space-y-3">
-                  {asset.ramGb && <SpecRow label="Memória" value={`${asset.ramGb} GB RAM`} />}
-                  {asset.cpuModel && (
-                    <SpecRow
-                      label="Processador"
-                      value={`${asset.cpuBrand ? asset.cpuBrand + ' ' : ''}${asset.cpuModel}${asset.cpuGeneration ? ` Gen ${asset.cpuGeneration}` : ''}`}
-                    />
-                  )}
-                  {asset.storageType && (
-                    <SpecRow
-                      label="Armazenamento"
-                      value={`${asset.storageType.replace('_', ' ')}${asset.storageGb ? ` — ${asset.storageGb} GB` : ''}`}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Financial Info */}
-            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-5">Informações Financeiras</h2>
-              {!asset.acquisitionCost && !asset.currentValue && !asset.warrantyUntil && !asset.notes ? (
-                <p className="text-slate-500 dark:text-slate-400 text-sm">Nenhuma informação cadastrada.</p>
-              ) : (
-                <div className="space-y-4">
-                  {asset.acquisitionCost && (
-                    <SpecRow label="Custo de aquisição" value={`R$ ${Number(asset.acquisitionCost).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} />
-                  )}
-                  {asset.currentValue && (
-                    <SpecRow label="Valor atual" value={`R$ ${Number(asset.currentValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`} />
-                  )}
-                  {asset.warrantyUntil && (
-                    <SpecRow label="Garantia até" value={formatDate(asset.warrantyUntil)} />
-                  )}
-                  {asset.notes && (
-                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
-                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold mb-2">Observações</p>
-                      <p className="text-sm text-slate-700 dark:text-slate-300">{asset.notes}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
+            {asset.acquisitionDate && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em', fontWeight: 700 }}>AQUISIÇÃO</span>
+                <span style={{ fontSize: 13, color: '#c8d6e5' }}>{fmt(asset.acquisitionDate)}</span>
+              </div>
+            )}
+            {asset.warrantyUntil && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em', fontWeight: 700 }}>GARANTIA ATÉ</span>
+                <span style={{ fontSize: 13, color: new Date(asset.warrantyUntil) < new Date() ? '#f87171' : '#c8d6e5' }}>
+                  {fmt(asset.warrantyUntil)}
+                </span>
+              </div>
+            )}
+            {asset.assignedToUser && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em', fontWeight: 700 }}>ATRIBUÍDO A</span>
+                <Link href={`/people/${asset.assignedToUser.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#00d9b8', textDecoration: 'none' }}>
+                  <User size={11} />
+                  {asset.assignedToUser.name}
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Movements History */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-5 flex items-center gap-2">
-            Histórico de Movimentações
-            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">({asset.movements.length})</span>
-          </h2>
-          {asset.movements.length === 0 ? (
-            <div className="flex items-center justify-center py-8 text-slate-500 dark:text-slate-400">
-              <AlertCircle size={18} className="mr-2" />
-              <p className="text-sm">Nenhuma movimentação registrada.</p>
+        {/* Quick stats */}
+        <div style={{ display: 'flex', gap: 16, flexShrink: 0 }}>
+          {[
+            { value: asset._count?.movements ?? 0,     label: 'Movimentos', color: '#38bdf8' },
+            { value: notesCount,                        label: 'Notas',      color: '#00d9b8' },
+            { value: filesCount,                        label: 'Arquivos',   color: '#a78bfa' },
+          ].map(s => (
+            <div key={s.label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '14px 18px', textAlign: 'center' }}>
+              <p style={{ fontSize: 28, fontWeight: 700, color: s.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068', marginTop: 4, letterSpacing: '0.05em' }}>{s.label.toUpperCase()}</p>
             </div>
-          ) : (
-            <div className="space-y-0 divide-y divide-slate-200 dark:divide-slate-700">
-              {asset.movements.map((m, idx) => (
-                <div key={m.id} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
-                  <div className="flex-shrink-0 pt-0.5">
-                    <div className={`w-2.5 h-2.5 rounded-full ${movementColorMap[m.type] || 'text-slate-400'} bg-current opacity-60`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                      <p className="font-medium text-slate-900 dark:text-white text-sm">
-                        {movementLabel[m.type] ?? m.type}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {m.fromUser && <span>{m.fromUser.name}</span>}
-                        {m.fromUser && m.toUser && <span> → </span>}
-                        {m.toUser && <span>{m.toUser.name}</span>}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span>por {m.actor.name}</span>
-                      {m.ticket && (
-                        <>
-                          <span>·</span>
-                          <Link href={`/tickets/${m.ticketId}`} className="font-mono text-blue-600 dark:text-blue-400 hover:underline">
-                            {m.ticket.code}
-                          </Link>
-                        </>
-                      )}
-                      <span>·</span>
-                      <span>{formatDate(m.createdAt)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          ))}
         </div>
       </div>
-    </div>
-  )
-}
 
-function MetaField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wider font-semibold mb-2 flex items-center gap-1.5">
-        {icon && <span className="text-slate-500 dark:text-slate-500">{icon}</span>}
-        {label}
-      </p>
-      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{value}</p>
-    </div>
-  )
-}
+      {/* ── Tab Bar ──────────────────────────────────────────────────────── */}
+      <AssetTabBar
+        assetId={id}
+        activeTab={activeTab}
+        counts={{ notas: notesCount, arquivos: filesCount }}
+      />
 
-function SpecRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm text-slate-600 dark:text-slate-400">{label}</span>
-      <span className="font-medium text-slate-900 dark:text-slate-100">{value}</span>
+      {/* ═══════════════════════════════════════════════════════════════════
+          TAB: GERAL (specs + edit)
+      ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'geral' && (
+        <AssetEditPanel
+          asset={{
+            id: asset.id,
+            name: asset.name,
+            location: asset.location,
+            serialNumber: asset.serialNumber,
+            status: asset.status as 'STOCK' | 'DEPLOYED' | 'MAINTENANCE' | 'DISCARDED' | 'LOANED',
+            notes: asset.notes,
+            ramGb: asset.ramGb,
+            storageType: asset.storageType as 'HDD' | 'SSD_SATA' | 'SSD_NVME' | null,
+            storageGb: asset.storageGb,
+            cpuBrand: asset.cpuBrand as 'INTEL' | 'AMD' | 'OTHER' | null,
+            cpuModel: asset.cpuModel,
+            cpuGeneration: asset.cpuGeneration,
+            acquisitionCost: asset.acquisitionCost ? String(asset.acquisitionCost) : null,
+            currentValue: asset.currentValue ? String(asset.currentValue) : null,
+            acquisitionDate: asset.acquisitionDate ? asset.acquisitionDate.toISOString() : null,
+            warrantyUntil: asset.warrantyUntil ? asset.warrantyUntil.toISOString() : null,
+          }}
+          canEdit={canEdit}
+          performanceScore={asset.performanceScore}
+          performanceLabel={asset.performanceLabel}
+          performanceNotes={asset.performanceNotes}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          TAB: HISTÓRICO (movements)
+      ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'historico' && movements && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {movements.length === 0 ? (
+            <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <ArrowLeftRight size={28} color="#1e3048" />
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#1e3048', fontStyle: 'italic' }}>
+                Nenhuma movimentação registrada
+              </p>
+            </div>
+          ) : (
+            movements.map(mv => {
+              const cfg = movementCfg[mv.type] ?? movementCfg.TRANSFER
+              const { Icon, label, color, borderColor } = cfg
+
+              return (
+                <div key={mv.id} style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '16px 20px', borderLeft: `3px solid ${color}` }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                    {/* Icon */}
+                    <div style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0, background: `${borderColor}33`, border: `1px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon size={16} color={color} />
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Top */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color }}>
+                          {label.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: 10, color: '#3d5068' }}>•</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060' }}>
+                          {fmtFull(mv.createdAt)}
+                        </span>
+                      </div>
+
+                      {/* Users / locations */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', marginBottom: 6 }}>
+                        {mv.fromUser && (
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>
+                            DE: <Link href={`/people/${mv.fromUser.id}`} style={{ color: '#8ba5c0', textDecoration: 'none' }}>{mv.fromUser.name}</Link>
+                          </span>
+                        )}
+                        {mv.toUser && (
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>
+                            PARA: <Link href={`/people/${mv.toUser.id}`} style={{ color: '#8ba5c0', textDecoration: 'none' }}>{mv.toUser.name}</Link>
+                          </span>
+                        )}
+                        {mv.fromLocation && (
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>
+                            LOCAL DE: <span style={{ color: '#8ba5c0' }}>{mv.fromLocation}</span>
+                          </span>
+                        )}
+                        {mv.toLocation && (
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>
+                            LOCAL PARA: <span style={{ color: '#8ba5c0' }}>{mv.toLocation}</span>
+                          </span>
+                        )}
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>
+                          POR: <Link href={`/people/${mv.actor.id}`} style={{ color: '#8ba5c0', textDecoration: 'none' }}>{mv.actor.name}</Link>
+                        </span>
+                      </div>
+
+                      {/* Status change */}
+                      {(mv.fromStatus || mv.toStatus) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          {mv.fromStatus && (
+                            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: statusConfig[mv.fromStatus]?.color ?? '#94a3b8', padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                              {statusConfig[mv.fromStatus]?.label ?? mv.fromStatus}
+                            </span>
+                          )}
+                          {mv.fromStatus && mv.toStatus && <span style={{ color: '#2d4060', fontSize: 10 }}>→</span>}
+                          {mv.toStatus && (
+                            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: statusConfig[mv.toStatus]?.color ?? '#94a3b8', padding: '2px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                              {statusConfig[mv.toStatus]?.label ?? mv.toStatus}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {mv.notes && (
+                        <p style={{ fontSize: 11, color: '#5a7a9a', marginTop: 4, fontStyle: 'italic', borderLeft: '2px solid rgba(255,255,255,0.06)', paddingLeft: 8 }}>
+                          {mv.notes}
+                        </p>
+                      )}
+
+                      {/* Linked entities */}
+                      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                        {mv.ticket && (
+                          <Link href={`/tickets/${mv.ticket.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 5, background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#38bdf8', textDecoration: 'none' }}>
+                            CHAMADO {mv.ticket.code}
+                          </Link>
+                        )}
+                        {mv.order && (
+                          <Link href={`/movements/${mv.order.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 5, background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.15)', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#a78bfa', textDecoration: 'none' }}>
+                            ORDEM DE MOVIMENTAÇÃO
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          TAB: NOTAS
+      ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'notas' && notes !== null && (
+        <AssetNotesPanel
+          assetId={id}
+          notes={notes.map(n => ({ ...n, createdAt: n.createdAt }))}
+          currentUserId={session!.user.id}
+          canEdit={canEdit}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          TAB: ARQUIVOS
+      ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'arquivos' && files !== null && (
+        <AssetFilesPanel
+          assetId={id}
+          files={files.map(f => ({ ...f, createdAt: f.createdAt }))}
+          currentUserId={session!.user.id}
+          canEdit={canEdit}
+          isAdmin={isAdmin}
+        />
+      )}
+
     </div>
   )
 }

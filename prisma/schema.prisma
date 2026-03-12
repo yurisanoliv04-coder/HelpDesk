@@ -195,6 +195,9 @@ model User {
   movementsActor  AssetMovement[] @relation("MovementActor")
   ordersInitiated MovementOrder[] @relation("OrderActor")
 
+  assetNotesAuthored AssetNote[] @relation("AssetNoteAuthor")
+  assetFilesUploaded AssetFile[] @relation("AssetFileUploader")
+
   notes         UserNote[] @relation("UserNotes")
   notesAuthored UserNote[] @relation("NoteAuthor")
   files         UserFile[] @relation("UserFiles")
@@ -496,12 +499,56 @@ model Asset {
 
   movements         AssetMovement[]
   orderItemsAsAsset MovementOrderItem[]
+  assetNotes        AssetNote[]
+  assetFiles        AssetFile[]
 
   @@index([status])
   @@index([assignedToUserId])
   @@index([categoryId])
   @@index([performanceLabel])
   @@map("assets")
+}
+
+// ─────────────────────────────────────────────
+// ASSET NOTES
+// ─────────────────────────────────────────────
+
+model AssetNote {
+  id       String @id @default(cuid())
+  assetId  String @map("asset_id")
+  asset    Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  authorId String @map("author_id")
+  author   User   @relation("AssetNoteAuthor", fields: [authorId], references: [id])
+  body     String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([assetId])
+  @@map("asset_notes")
+}
+
+// ─────────────────────────────────────────────
+// ASSET FILES
+// ─────────────────────────────────────────────
+
+model AssetFile {
+  id           String @id @default(cuid())
+  assetId      String @map("asset_id")
+  asset        Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  uploadedById String @map("uploaded_by_id")
+  uploadedBy   User   @relation("AssetFileUploader", fields: [uploadedById], references: [id])
+
+  filename     String // stored filename (UUID.ext)
+  originalName String @map("original_name")
+  mimeType     String @map("mime_type")
+  size         Int    // bytes
+  url          String // public path
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([assetId])
+  @@map("asset_files")
 }
 
 // ─────────────────────────────────────────────
