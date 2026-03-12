@@ -195,7 +195,54 @@ model User {
   movementsActor  AssetMovement[] @relation("MovementActor")
   ordersInitiated MovementOrder[] @relation("OrderActor")
 
+  notes         UserNote[] @relation("UserNotes")
+  notesAuthored UserNote[] @relation("NoteAuthor")
+  files         UserFile[] @relation("UserFiles")
+  filesUploaded UserFile[] @relation("FileUploader")
+
   @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// USER NOTES
+// ─────────────────────────────────────────────
+
+model UserNote {
+  id       String @id @default(cuid())
+  userId   String @map("user_id")
+  user     User   @relation("UserNotes", fields: [userId], references: [id], onDelete: Cascade)
+  authorId String @map("author_id")
+  author   User   @relation("NoteAuthor", fields: [authorId], references: [id])
+  body     String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("user_notes")
+}
+
+// ─────────────────────────────────────────────
+// USER FILES
+// ─────────────────────────────────────────────
+
+model UserFile {
+  id           String @id @default(cuid())
+  userId       String @map("user_id")
+  user         User   @relation("UserFiles", fields: [userId], references: [id], onDelete: Cascade)
+  uploadedById String @map("uploaded_by_id")
+  uploadedBy   User   @relation("FileUploader", fields: [uploadedById], references: [id])
+
+  filename     String // stored filename (UUID.ext)
+  originalName String @map("original_name")
+  mimeType     String @map("mime_type")
+  size         Int    // bytes
+  url          String // public path
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("user_files")
 }
 
 // ─────────────────────────────────────────────
