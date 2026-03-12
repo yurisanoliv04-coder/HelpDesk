@@ -160,6 +160,7 @@ export default function NotesPanel({ userId, notes: initialNotes, currentUserId,
                   borderRadius: 12, padding: '16px 20px',
                   opacity: isDeleting ? 0.4 : 1, transition: 'opacity 0.2s',
                   borderLeft: '3px solid rgba(0,217,184,0.25)',
+                  minWidth: 0, overflow: 'hidden',
                 }}
               >
                 {/* Header */}
@@ -217,7 +218,7 @@ export default function NotesPanel({ userId, notes: initialNotes, currentUserId,
                 </div>
 
                 {/* Body */}
-                <p style={{ fontSize: 13, color: '#c8d6e5', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+                <p style={{ fontSize: 13, color: '#c8d6e5', lineHeight: 1.65, whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word', minWidth: 0 }}>
                   {note.body}
                 </p>
               </div>

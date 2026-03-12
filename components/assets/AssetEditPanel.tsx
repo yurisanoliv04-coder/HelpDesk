@@ -64,8 +64,8 @@ function isoToDateInput(iso: string | null) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#2d4060', letterSpacing: '0.1em' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600, color: '#3d5068', letterSpacing: '0.08em' }}>
         {label}
       </label>
       {children}
@@ -170,7 +170,7 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
 
       {/* ── Section header ───────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.1em' }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
           INFORMAÇÕES DO ATIVO
         </span>
         {canEdit && !editing && (
@@ -180,7 +180,7 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
               display: 'inline-flex', alignItems: 'center', gap: 5,
               padding: '6px 12px', borderRadius: 7,
               background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-              color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+              color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
               cursor: 'pointer', transition: 'all 0.12s',
             }}
             onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'rgba(0,217,184,0.1)'; t.style.borderColor = 'rgba(0,217,184,0.25)'; t.style.color = '#00d9b8' }}
@@ -193,14 +193,14 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleCancel}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, cursor: 'pointer' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
             >
-              <X size={10} /> CANCELAR
+              <X size={11} /> CANCELAR
             </button>
             <button
               onClick={handleSave}
               disabled={isPending}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, background: 'rgba(0,217,184,0.15)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.6 : 1 }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, background: 'rgba(0,217,184,0.15)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.6 : 1 }}
             >
               {isPending ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={10} />}
               {isPending ? 'SALVANDO...' : 'SALVAR'}
@@ -208,15 +208,15 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
           </div>
         )}
         {saved && !editing && (
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Check size={10} /> SALVO
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Check size={11} /> SALVO
           </span>
         )}
       </div>
 
       {/* ── Informações básicas ──────────────────────────────────────────── */}
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#1e3048', letterSpacing: '0.12em', marginBottom: 16 }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 18 }}>
           ── IDENTIFICAÇÃO
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -288,7 +288,7 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <Cpu size={13} color="#3d5068" />
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#1e3048', letterSpacing: '0.12em' }}>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
             ── HARDWARE
           </span>
         </div>
@@ -378,12 +378,12 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
           <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Activity size={13} color="#3d5068" />
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', letterSpacing: '0.08em' }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#3d5068', letterSpacing: '0.08em' }}>
                 PERFORMANCE
               </span>
               {performanceLabel && (
                 <span style={{
-                  fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
                   color: perfConfig[performanceLabel]?.color ?? '#94a3b8',
                   padding: '2px 7px', borderRadius: 4,
                   background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
@@ -405,7 +405,7 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <DollarSign size={13} color="#3d5068" />
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#1e3048', letterSpacing: '0.12em' }}>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
             ── FINANCEIRO
           </span>
         </div>

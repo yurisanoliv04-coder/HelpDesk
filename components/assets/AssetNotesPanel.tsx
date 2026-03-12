@@ -139,6 +139,7 @@ export default function AssetNotesPanel({ assetId, notes: initialNotes, currentU
                 borderRadius: 12, padding: '16px 20px',
                 opacity: isDeleting ? 0.4 : 1, transition: 'opacity 0.2s',
                 borderLeft: '3px solid rgba(0,217,184,0.25)',
+                minWidth: 0, overflow: 'hidden',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -168,7 +169,7 @@ export default function AssetNotesPanel({ assetId, notes: initialNotes, currentU
                     )}
                   </div>
                 </div>
-                <p style={{ fontSize: 13, color: '#c8d6e5', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>{note.body}</p>
+                <p style={{ fontSize: 13, color: '#c8d6e5', lineHeight: 1.65, whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word', minWidth: 0 }}>{note.body}</p>
               </div>
             )
           })}
