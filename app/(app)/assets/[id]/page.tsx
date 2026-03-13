@@ -14,6 +14,7 @@ import AssetTabBar from '@/components/assets/AssetTabBar'
 import AssetEditPanel from '@/components/assets/AssetEditPanel'
 import AssetNotesPanel from '@/components/assets/AssetNotesPanel'
 import AssetFilesPanel from '@/components/assets/AssetFilesPanel'
+import AssetQuickActions from '@/components/assets/AssetQuickActions'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -79,16 +80,23 @@ export default async function AssetDetailPage({
   const isAdmin = session?.user.role === 'ADMIN'
 
   // ── Base query ─────────────────────────────────────────────────────────────
-  const asset = await prisma.asset.findUnique({
-    where: { id },
-    include: {
-      category: true,
-      assignedToUser: { select: { id: true, name: true } },
-      assetNotes: { select: { id: true } },
-      assetFiles: { select: { id: true } },
-      _count: { select: { movements: true } },
-    },
-  })
+  const [asset, activeUsers] = await Promise.all([
+    prisma.asset.findUnique({
+      where: { id },
+      include: {
+        category: true,
+        assignedToUser: { select: { id: true, name: true } },
+        assetNotes: { select: { id: true } },
+        assetFiles: { select: { id: true } },
+        _count: { select: { movements: true } },
+      },
+    }),
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+  ])
 
   if (!asset) notFound()
 
@@ -132,14 +140,24 @@ export default async function AssetDetailPage({
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
       {/* ── Breadcrumb ───────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Link href="/assets" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', textDecoration: 'none', letterSpacing: '0.1em' }}>
-          PATRIMÔNIO
-        </Link>
-        <span style={{ color: '#1e3048', fontSize: 10 }}>/</span>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#00d9b8', letterSpacing: '0.1em' }}>
-          {asset.tag}
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Link href="/assets" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', textDecoration: 'none', letterSpacing: '0.1em' }}>
+            PATRIMÔNIO
+          </Link>
+          <span style={{ color: '#1e3048', fontSize: 10 }}>/</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#00d9b8', letterSpacing: '0.1em' }}>
+            {asset.tag}
+          </span>
+        </div>
+        <AssetQuickActions
+          assetId={asset.id}
+          assetStatus={asset.status}
+          assetName={asset.name}
+          isAdmin={isAdmin}
+          users={activeUsers}
+          variant="detail"
+        />
       </div>
 
       {/* ── Header card ──────────────────────────────────────────────────── */}

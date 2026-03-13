@@ -7,6 +7,7 @@ import {
   Headphones, Battery, Network, Smartphone, Package,
   Cpu, HardDrive, Server, Tablet, Camera, type LucideProps,
 } from 'lucide-react'
+import AssetQuickActions from '@/components/assets/AssetQuickActions'
 
 // Map DB icon name → Lucide component
 const iconMap: Record<string, React.ComponentType<LucideProps>> = {
@@ -51,7 +52,7 @@ const perfConfig: Record<string, { label: string; color: string; track: string }
 }
 
 // Grid columns — shared between header and rows
-const GRID = '44px minmax(200px,1fr) 100px 130px 160px 140px 110px 120px 28px'
+const GRID = '44px minmax(200px,1fr) 100px 130px 160px 140px 110px 120px 32px'
 
 export default async function AssetsPage({
   searchParams,
@@ -69,8 +70,10 @@ export default async function AssetsPage({
   if (sp.location)    where.location           = sp.location
   if (sp.userId)      where.assignedToUserId   = sp.userId
 
-  // Fetch assets + global counts in parallel
-  const [assets, counts, filteredUser] = await Promise.all([
+  const isAdmin = role === 'ADMIN'
+
+  // Fetch assets + global counts + active users (for quick actions)
+  const [assets, counts, filteredUser, activeUsers] = await Promise.all([
     prisma.asset.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
@@ -87,6 +90,11 @@ export default async function AssetsPage({
     sp.userId
       ? prisma.user.findUnique({ where: { id: sp.userId }, select: { name: true } })
       : Promise.resolve(null),
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
   ])
 
   const ruimCount = await prisma.asset.count({ where: { performanceLabel: 'RUIM' } })
@@ -514,11 +522,16 @@ export default async function AssetsPage({
                   </span>
                 </div>
 
-                {/* Arrow */}
-                <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-                  <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#2d4060" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                {/* Quick actions */}
+                <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <AssetQuickActions
+                    assetId={asset.id}
+                    assetStatus={asset.status}
+                    assetName={asset.name}
+                    isAdmin={isAdmin}
+                    users={activeUsers}
+                    variant="row"
+                  />
                 </div>
               </div>
             )
