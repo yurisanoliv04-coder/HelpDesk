@@ -7,6 +7,7 @@ import DepartmentsTab from '@/components/settings/DepartmentsTab'
 import CategoriesTab from '@/components/settings/CategoriesTab'
 import ScoringTab from '@/components/settings/ScoringTab'
 import TicketSettingsTab from '@/components/settings/TicketSettingsTab'
+import { getComputerScoringConfig } from './actions'
 
 const TABS = [
   { key: 'usuarios',      label: 'Usuários',          icon: '👥' },
@@ -30,7 +31,8 @@ export default async function SettingsPage({
 
   // Load data for active tab
   const [
-    users, departments, ticketCategories, assetCategories, slaPolices, totalAssets,
+    users, departments, ticketCategories, assetCategories, slaPolices,
+    totalAssets, scoringConfig, scoringRules,
   ] = await Promise.all([
     activeTab === 'usuarios' ? prisma.user.findMany({
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
@@ -46,8 +48,15 @@ export default async function SettingsPage({
     }) : Promise.resolve([]),
 
     activeTab === 'categorias' ? prisma.ticketCategory.findMany({
+      where: { parentId: null }, // only root categories
       orderBy: { name: 'asc' },
-      include: { _count: { select: { tickets: true } } },
+      include: {
+        _count: { select: { tickets: true } },
+        children: {
+          orderBy: { name: 'asc' },
+          include: { _count: { select: { tickets: true } } },
+        },
+      },
     }) : Promise.resolve([]),
 
     activeTab === 'categorias' ? prisma.assetCategory.findMany({
@@ -61,6 +70,12 @@ export default async function SettingsPage({
     }) : Promise.resolve([]),
 
     activeTab === 'scoring' ? prisma.asset.count() : Promise.resolve(0),
+
+    activeTab === 'scoring' ? getComputerScoringConfig() : Promise.resolve(null),
+
+    activeTab === 'chamados' ? prisma.ticketScoringRule.findMany({
+      orderBy: [{ criterion: 'asc' }, { points: 'desc' }],
+    }) : Promise.resolve([]),
   ])
 
   const deptsForUsers = activeTab === 'usuarios'
@@ -143,11 +158,15 @@ export default async function SettingsPage({
         {activeTab === 'chamados' && (
           <TicketSettingsTab
             slaPolices={slaPolices as Parameters<typeof TicketSettingsTab>[0]['slaPolices']}
+            scoringRules={scoringRules as Parameters<typeof TicketSettingsTab>[0]['scoringRules']}
           />
         )}
 
-        {activeTab === 'scoring' && (
-          <ScoringTab totalAssets={totalAssets as number} />
+        {activeTab === 'scoring' && scoringConfig && (
+          <ScoringTab
+            totalAssets={totalAssets as number}
+            initialConfig={scoringConfig}
+          />
         )}
 
         {activeTab === 'categorias' && (

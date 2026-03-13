@@ -1,46 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { recalculateAllScores } from '@/app/(app)/settings/actions'
+import { recalculateAllScores, saveComputerScoringConfig } from '@/app/(app)/settings/actions'
+import type { ComputerScoringConfig, RamTier, StorageTier, CpuTier, CpuGenTier } from '@/lib/scoring/computer'
 
-interface Props { totalAssets: number }
-
-const criteria = [
-  {
-    title: 'Memória RAM', subtitle: '40 pontos máx', color: '#38bdf8', icon: '🧠',
-    rows: [
-      { label: '≥ 16 GB', pts: 40, note: 'Ideal — sem restrições' },
-      { label: '8 GB',    pts: 30, note: 'Confortável, pequeno bônus ao upgrade para 16 GB' },
-      { label: '4 GB',    pts: 12, note: 'Limitado para ERP + navegador + e-mail simultâneos' },
-      { label: '< 4 GB',  pts:  0, note: 'Inviável para uso corporativo' },
-    ],
-  },
-  {
-    title: 'Armazenamento', subtitle: '30 pontos máx', color: '#a78bfa', icon: '💾',
-    rows: [
-      { label: 'SSD NVMe',  pts: 30, note: 'Máximo desempenho' },
-      { label: 'SSD SATA',  pts: 28, note: 'Praticamente idêntico para tarefas de escritório' },
-      { label: 'HDD',       pts:  5, note: 'Penalidade severa — substituição recomendada' },
-    ],
-  },
-  {
-    title: 'Processador (CPU)', subtitle: '30 pontos máx', color: '#34d399', icon: '⚙️',
-    rows: [
-      { label: 'i9 / Ryzen 9', pts: 28, note: 'Superdimensionado, mas ótimo' },
-      { label: 'i7 / Ryzen 7', pts: 26, note: 'Excelente para escritório' },
-      { label: 'i5 / Ryzen 5', pts: 24, note: 'Ponto ideal para contabilidade/ERP' },
-      { label: 'i3 / Ryzen 3', pts: 20, note: 'Suficiente para tarefas típicas' },
-      { label: 'Celeron / Pentium / Athlon', pts: 8, note: 'Pode travar em ERPs pesados' },
-    ],
-  },
-]
-
-const genBonus = [
-  { label: '≥ 10ª geração', adj: '+2 pts', note: 'Bônus simbólico — geração recente' },
-  { label: '6ª–9ª geração', adj: '±0 pts', note: 'Ainda adequado, sem penalidade' },
-  { label: '4ª–5ª geração', adj: '−5 pts', note: 'Envelhecendo — planeje substituição' },
-  { label: '≤ 3ª geração',  adj: '−12 pts', note: 'Obsoleto — risco de incompatibilidade' },
-]
+interface Props {
+  totalAssets: number
+  initialConfig: ComputerScoringConfig
+}
 
 const thresholds = [
   { label: 'BOM',          pts: '≥ 60',    color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.2)',  desc: 'Atende bem o dia-a-dia sem ressalvas' },
@@ -48,30 +15,138 @@ const thresholds = [
   { label: 'RUIM',         pts: '< 35',    color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)', desc: 'Impacto visível na produtividade' },
 ]
 
-export default function ScoringTab({ totalAssets }: Props) {
+const inputN: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#c8d6e5',
+  outline: 'none', width: 60, textAlign: 'right', fontFamily: "'JetBrains Mono', monospace",
+}
+const inputS: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#c8d6e5',
+  outline: 'none', flex: 1, fontFamily: "'JetBrains Mono', monospace",
+}
+
+export default function ScoringTab({ totalAssets, initialConfig }: Props) {
   const [isPending, startTransition] = useTransition()
-  const [result, setResult] = useState<{ ok: boolean; updated: number; error?: string } | null>(null)
+  const [calcResult, setCalcResult] = useState<{ ok: boolean; updated: number; error?: string } | null>(null)
+  const [saveResult, setSaveResult] = useState<{ ok: boolean; error?: string } | null>(null)
+
+  const [config, setConfig] = useState<ComputerScoringConfig>(initialConfig)
+  const [hasChanges, setHasChanges] = useState(false)
+
+  function updateConfig(next: ComputerScoringConfig) {
+    setConfig(next); setHasChanges(true); setSaveResult(null)
+  }
+
+  // RAM tier edit
+  function setRamPts(idx: number, pts: number) {
+    const ram = config.ram.map((r, i) => i === idx ? { ...r, pts } : r)
+    updateConfig({ ...config, ram })
+  }
+  function addRamTier() {
+    updateConfig({ ...config, ram: [...config.ram, { label: 'Nova faixa', minGb: 0, pts: 0 }] })
+  }
+  function removeRamTier(idx: number) {
+    updateConfig({ ...config, ram: config.ram.filter((_, i) => i !== idx) })
+  }
+  function setRamLabel(idx: number, label: string) {
+    const ram = config.ram.map((r, i) => i === idx ? { ...r, label } : r)
+    updateConfig({ ...config, ram })
+  }
+  function setRamMinGb(idx: number, minGb: number) {
+    const ram = config.ram.map((r, i) => i === idx ? { ...r, minGb } : r)
+    updateConfig({ ...config, ram })
+  }
+
+  // Storage tier edit
+  function setStoragePts(idx: number, pts: number) {
+    const storage = config.storage.map((s, i) => i === idx ? { ...s, pts } : s)
+    updateConfig({ ...config, storage })
+  }
+  function addStorageTier() {
+    updateConfig({ ...config, storage: [...config.storage, { type: 'HDD', label: 'Nova faixa', pts: 0 }] })
+  }
+  function removeStorageTier(idx: number) {
+    updateConfig({ ...config, storage: config.storage.filter((_, i) => i !== idx) })
+  }
+  function setStorageLabel(idx: number, label: string) {
+    const storage = config.storage.map((s, i) => i === idx ? { ...s, label } : s)
+    updateConfig({ ...config, storage })
+  }
+
+  // CPU tier edit
+  function setCpuPts(idx: number, pts: number) {
+    const cpu = config.cpu.map((c, i) => i === idx ? { ...c, pts } : c)
+    updateConfig({ ...config, cpu })
+  }
+  function addCpuTier() {
+    updateConfig({ ...config, cpu: [...config.cpu, { patterns: [''], label: 'Novo modelo', pts: 0 }] })
+  }
+  function removeCpuTier(idx: number) {
+    updateConfig({ ...config, cpu: config.cpu.filter((_, i) => i !== idx) })
+  }
+  function setCpuLabel(idx: number, label: string) {
+    const cpu = config.cpu.map((c, i) => i === idx ? { ...c, label } : c)
+    updateConfig({ ...config, cpu })
+  }
+
+  // CPU gen edit
+  function setCpuGenAdj(idx: number, adj: number) {
+    const cpuGen = config.cpuGen.map((g, i) => i === idx ? { ...g, adj } : g)
+    updateConfig({ ...config, cpuGen })
+  }
+  function setCpuGenLabel(idx: number, label: string) {
+    const cpuGen = config.cpuGen.map((g, i) => i === idx ? { ...g, label } : g)
+    updateConfig({ ...config, cpuGen })
+  }
+
+  function handleSaveConfig() {
+    setSaveResult(null)
+    startTransition(async () => {
+      const r = await saveComputerScoringConfig(config)
+      setSaveResult(r)
+      if (r.ok) setHasChanges(false)
+    })
+  }
 
   function handleRecalculate() {
-    setResult(null)
+    setCalcResult(null)
     startTransition(async () => {
       const r = await recalculateAllScores()
-      setResult(r)
+      setCalcResult(r)
     })
+  }
+
+  const sectionCard = (color: string): React.CSSProperties => ({
+    background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 20px',
+  })
+  const headerLabel = (color: string): React.CSSProperties => ({
+    fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
+    color, letterSpacing: '0.08em',
+  })
+  const addBtn: React.CSSProperties = {
+    padding: '4px 12px', borderRadius: 6, fontSize: 10, cursor: 'pointer',
+    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+    color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+  }
+  const delBtn: React.CSSProperties = {
+    padding: '2px 7px', borderRadius: 5, fontSize: 10, cursor: 'pointer',
+    background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)', color: '#f87171',
+    flexShrink: 0,
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Thresholds */}
+      {/* Thresholds (static) */}
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '20px 22px' }}>
         <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 14 }}>CLASSIFICAÇÃO DE QUALIDADE</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {thresholds.map(t => (
-            <div key={t.label} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '16px 18px' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: t.color, letterSpacing: '0.08em' }}>{t.label}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, fontWeight: 800, color: t.color }}>{t.pts}</span>
+            <div key={t.label} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: t.color, letterSpacing: '0.08em' }}>{t.label}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, fontWeight: 800, color: t.color }}>{t.pts}</span>
               </div>
               <p style={{ fontSize: 11, color: '#3d5068', lineHeight: 1.4 }}>{t.desc}</p>
             </div>
@@ -79,52 +154,114 @@ export default function ScoringTab({ totalAssets }: Props) {
         </div>
       </div>
 
+      {/* Unsaved changes banner */}
+      {hasChanges && (
+        <div style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 12, color: '#fbbf24' }}>⚠ Há alterações não salvas na configuração de pontuação.</span>
+          <button onClick={handleSaveConfig} disabled={isPending} style={{
+            padding: '7px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24',
+            fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap', flexShrink: 0,
+          }}>Salvar configuração</button>
+        </div>
+      )}
+      {saveResult && (
+        <p style={{ fontSize: 12, color: saveResult.ok ? '#34d399' : '#f87171', textAlign: 'center' }}>
+          {saveResult.ok ? '✓ Configuração salva com sucesso' : `⚠ ${saveResult.error}`}
+        </p>
+      )}
+
       {/* Criteria grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-        {criteria.map(c => (
-          <div key={c.title} style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontSize: 16 }}>{c.icon}</span>
+
+        {/* RAM card */}
+        <div style={sectionCard('#38bdf8')}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🧠</span>
               <div>
-                <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: c.color, letterSpacing: '0.08em' }}>{c.title.toUpperCase()}</p>
-                <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{c.subtitle}</p>
+                <p style={headerLabel('#38bdf8')}>MEMÓRIA RAM</p>
+                <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{config.maxRamPts} pontos máx</p>
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {c.rows.map(r => (
-                <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#8ba5c0', fontWeight: 600 }}>{r.label}</p>
-                    <p style={{ fontSize: 10, color: '#2d4060', marginTop: 2, lineHeight: 1.3 }}>{r.note}</p>
-                  </div>
-                  <div style={{ flexShrink: 0, background: `${c.color}15`, border: `1px solid ${c.color}30`, borderRadius: 6, padding: '3px 8px', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: c.color, whiteSpace: 'nowrap' }}>
-                    {r.pts} pts
-                  </div>
-                </div>
-              ))}
-            </div>
+            <button style={addBtn} onClick={addRamTier}>+ Faixa</button>
           </div>
-        ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {config.ram.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={r.label} onChange={e => setRamLabel(i, e.target.value)} style={{ ...inputS, minWidth: 0 }} title="Rótulo" />
+                <input type="number" value={r.minGb} onChange={e => setRamMinGb(i, Number(e.target.value))} style={{ ...inputN, width: 50 }} title="GB mín" min={0} />
+                <input type="number" value={r.pts} onChange={e => setRamPts(i, Number(e.target.value))} style={inputN} title="Pontos" min={0} max={config.maxRamPts} />
+                <span style={{ fontSize: 10, color: '#2d4060', flexShrink: 0 }}>pts</span>
+                <button style={delBtn} onClick={() => removeRamTier(i)} title="Remover">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* CPU generation card */}
-        <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 20px' }}>
+        {/* Storage card */}
+        <div style={sectionCard('#a78bfa')}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>💾</span>
+              <div>
+                <p style={headerLabel('#a78bfa')}>ARMAZENAMENTO</p>
+                <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{config.maxStoragePts} pontos máx</p>
+              </div>
+            </div>
+            <button style={addBtn} onClick={addStorageTier}>+ Faixa</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {config.storage.map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={s.label} onChange={e => setStorageLabel(i, e.target.value)} style={{ ...inputS, minWidth: 0 }} />
+                <input type="number" value={s.pts} onChange={e => setStoragePts(i, Number(e.target.value))} style={inputN} min={0} max={config.maxStoragePts} />
+                <span style={{ fontSize: 10, color: '#2d4060', flexShrink: 0 }}>pts</span>
+                <button style={delBtn} onClick={() => removeStorageTier(i)} title="Remover">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CPU card */}
+        <div style={sectionCard('#34d399')}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>⚙️</span>
+              <div>
+                <p style={headerLabel('#34d399')}>PROCESSADOR (CPU)</p>
+                <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{config.maxCpuPts} pontos máx</p>
+              </div>
+            </div>
+            <button style={addBtn} onClick={addCpuTier}>+ Modelo</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {config.cpu.map((c, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={c.label} onChange={e => setCpuLabel(i, e.target.value)} style={{ ...inputS, minWidth: 0 }} />
+                <input type="number" value={c.pts} onChange={e => setCpuPts(i, Number(e.target.value))} style={inputN} min={0} max={config.maxCpuPts} />
+                <span style={{ fontSize: 10, color: '#2d4060', flexShrink: 0 }}>pts</span>
+                <button style={delBtn} onClick={() => removeCpuTier(i)} title="Remover">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CPU Generation card */}
+        <div style={sectionCard('#fbbf24')}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             <span style={{ fontSize: 16 }}>📅</span>
             <div>
-              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#fbbf24', letterSpacing: '0.08em' }}>GERAÇÃO DO PROCESSADOR</p>
+              <p style={headerLabel('#fbbf24')}>GERAÇÃO DO PROCESSADOR</p>
               <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>Ajuste aplicado sobre pontuação do modelo</p>
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {genBonus.map(g => (
-              <div key={g.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                <div>
-                  <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#8ba5c0', fontWeight: 600 }}>{g.label}</p>
-                  <p style={{ fontSize: 10, color: '#2d4060', marginTop: 2, lineHeight: 1.3 }}>{g.note}</p>
-                </div>
-                <span style={{ flexShrink: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: g.adj.startsWith('+') ? '#34d399' : g.adj.startsWith('−') ? '#f87171' : '#94a3b8' }}>
-                  {g.adj}
-                </span>
+            {config.cpuGen.map((g, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input value={g.label} onChange={e => setCpuGenLabel(i, e.target.value)} style={{ ...inputS, minWidth: 0 }} />
+                <input type="number" value={g.adj} onChange={e => setCpuGenAdj(i, Number(e.target.value))} style={{ ...inputN, color: g.adj > 0 ? '#34d399' : g.adj < 0 ? '#f87171' : '#94a3b8' }} />
+                <span style={{ fontSize: 10, color: '#2d4060', flexShrink: 0 }}>pts</span>
               </div>
             ))}
           </div>
@@ -136,11 +273,11 @@ export default function ScoringTab({ totalAssets }: Props) {
         <div>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#c8d6e5' }}>Recalcular pontuações</p>
           <p style={{ fontSize: 12, color: '#3d5068', marginTop: 3 }}>
-            Aplica os critérios atuais a todos os {totalAssets} ativos com dados de hardware cadastrados.
+            Aplica os critérios atuais (salvos) a todos os {totalAssets} ativos com dados de hardware cadastrados.
           </p>
-          {result && (
-            <p style={{ fontSize: 12, marginTop: 8, color: result.ok ? '#34d399' : '#f87171' }}>
-              {result.ok ? `✓ ${result.updated} ativos recalculados com sucesso` : `⚠ Erro: ${result.error}`}
+          {calcResult && (
+            <p style={{ fontSize: 12, marginTop: 8, color: calcResult.ok ? '#34d399' : '#f87171' }}>
+              {calcResult.ok ? `✓ ${calcResult.updated} ativos recalculados com sucesso` : `⚠ Erro: ${calcResult.error}`}
             </p>
           )}
         </div>

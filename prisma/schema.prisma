@@ -281,6 +281,10 @@ model TicketCategory {
   sortOrder        Int            @default(0) @map("sort_order")
   defaultPriority  TicketPriority @default(MEDIUM) @map("default_priority")
 
+  parentId String?         @map("parent_id")
+  parent   TicketCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children TicketCategory[] @relation("CategoryTree")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -289,6 +293,38 @@ model TicketCategory {
   solutions TicketSolution[]
 
   @@map("ticket_categories")
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM CONFIG
+// ─────────────────────────────────────────────
+
+model SystemConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}
+
+// ─────────────────────────────────────────────
+// TICKET SCORING RULES
+// ─────────────────────────────────────────────
+
+model TicketScoringRule {
+  id        String  @id @default(cuid())
+  criterion String  // "IMPACT", "AFFECTED_USERS"
+  value     String  // criterion-specific value identifier
+  label     String  // human-readable label
+  points    Int
+  active    Boolean @default(true)
+  sortOrder Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([criterion, value])
+  @@map("ticket_scoring_rules")
 }
 
 // ─────────────────────────────────────────────
