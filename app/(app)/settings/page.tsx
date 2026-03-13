@@ -32,6 +32,7 @@ export default async function SettingsPage({
   // Load data for active tab
   const [
     users, departments, ticketCategories, assetCategories, slaPolices,
+    chamadosCategories, chamadosDepartments,
     totalAssets, scoringConfig, scoringRules,
   ] = await Promise.all([
     activeTab === 'usuarios' ? prisma.user.findMany({
@@ -67,6 +68,28 @@ export default async function SettingsPage({
     activeTab === 'chamados' ? prisma.slaPolicy.findMany({
       orderBy: { name: 'asc' },
       include: { category: { select: { name: true } } },
+    }) : Promise.resolve([]),
+
+    // Categories with scoring points for chamados tab
+    activeTab === 'chamados' ? prisma.ticketCategory.findMany({
+      where: { parentId: null },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true, name: true, description: true, active: true, scoringPoints: true,
+        children: {
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true, description: true, active: true, scoringPoints: true },
+        },
+      },
+    }) : Promise.resolve([]),
+
+    // Departments with scoring points for chamados tab
+    activeTab === 'chamados' ? prisma.department.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true, name: true, code: true, active: true, scoringPoints: true,
+        _count: { select: { users: true } },
+      },
     }) : Promise.resolve([]),
 
     activeTab === 'scoring' ? prisma.asset.count() : Promise.resolve(0),
@@ -158,7 +181,8 @@ export default async function SettingsPage({
         {activeTab === 'chamados' && (
           <TicketSettingsTab
             slaPolices={slaPolices as Parameters<typeof TicketSettingsTab>[0]['slaPolices']}
-            scoringRules={scoringRules as Parameters<typeof TicketSettingsTab>[0]['scoringRules']}
+            ticketCategories={chamadosCategories as Parameters<typeof TicketSettingsTab>[0]['ticketCategories']}
+            departments={chamadosDepartments as Parameters<typeof TicketSettingsTab>[0]['departments']}
           />
         )}
 

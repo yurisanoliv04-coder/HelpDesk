@@ -86,6 +86,17 @@ export async function deleteDepartment(id: string): Promise<{ ok: boolean; error
   }
 }
 
+export async function updateDepartmentScoringPoints(id: string, pts: number): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    await prisma.department.update({ where: { id }, data: { scoringPoints: Math.max(0, pts) } })
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
 export async function toggleDepartmentActive(deptId: string) {
   await requireAdmin()
   const dept = await prisma.department.findUnique({ where: { id: deptId }, select: { active: true } })
@@ -118,6 +129,17 @@ export async function createTicketSubcategory(parentId: string, name: string, de
     await prisma.ticketCategory.create({
       data: { name: name.trim(), description: description.trim() || null, parentId },
     })
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+export async function updateCategoryScoringPoints(id: string, pts: number): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    await prisma.ticketCategory.update({ where: { id }, data: { scoringPoints: Math.max(0, pts) } })
     revalidatePath('/settings')
     return { ok: true }
   } catch (e) {

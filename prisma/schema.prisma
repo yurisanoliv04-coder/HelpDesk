@@ -140,12 +140,13 @@ enum OrderItemStatus {
 // ─────────────────────────────────────────────
 
 model Department {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  code      String?  @unique
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(cuid())
+  name          String   @unique
+  code          String?  @unique
+  active        Boolean  @default(true)
+  scoringPoints Int      @default(0) @map("scoring_points")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   users   User[]
   tickets Ticket[]
@@ -280,6 +281,7 @@ model TicketCategory {
   active           Boolean        @default(true)
   sortOrder        Int            @default(0) @map("sort_order")
   defaultPriority  TicketPriority @default(MEDIUM) @map("default_priority")
+  scoringPoints    Int            @default(0) @map("scoring_points")
 
   parentId String?         @map("parent_id")
   parent   TicketCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)

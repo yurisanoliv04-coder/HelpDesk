@@ -1,25 +1,63 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import {
-  createTicketScoringRule, updateTicketScoringRule,
-  deleteTicketScoringRule, toggleTicketScoringRuleActive,
-} from '@/app/(app)/settings/actions'
+import { useState, useTransition, useCallback } from 'react'
+import { updateCategoryScoringPoints, updateDepartmentScoringPoints } from '@/app/(app)/settings/actions'
 
-interface SlaPolicy {
-  id: string; name: string; active: boolean
-  priority: string | null; responseMinutes: number; resolutionMinutes: number
-  category: { name: string } | null
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface SubCategory {
+  id: string
+  name: string
+  description: string | null
+  active: boolean
+  scoringPoints: number
 }
 
-interface ScoringRule {
-  id: string; criterion: string; value: string; label: string; points: number; active: boolean
+interface TicketCategory {
+  id: string
+  name: string
+  description: string | null
+  active: boolean
+  scoringPoints: number
+  children: SubCategory[]
+}
+
+interface Department {
+  id: string
+  name: string
+  code: string | null
+  active: boolean
+  scoringPoints: number
+  _count: { users: number }
+}
+
+interface SlaPolicy {
+  id: string
+  name: string
+  active: boolean
+  priority: string | null
+  responseMinutes: number
+  resolutionMinutes: number
+  category: { name: string } | null
 }
 
 interface Props {
   slaPolices: SlaPolicy[]
-  scoringRules: ScoringRule[]
+  ticketCategories: TicketCategory[]
+  departments: Department[]
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const THRESHOLDS = [
+  { label: 'URGENTE', min: 70, color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)',  desc: 'Resposta imediata' },
+  { label: 'ALTA',    min: 45, color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.2)',   desc: 'Mesmo dia' },
+  { label: 'MÉDIA',   min: 20, color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.2)',   desc: 'Dentro do SLA' },
+  { label: 'BAIXA',   min: 0,  color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)',  desc: 'Fila normal' },
+]
+
+const PRIORITY_COLOR: Record<string, string> = { LOW: '#94a3b8', MEDIUM: '#38bdf8', HIGH: '#fbbf24', URGENT: '#f87171' }
+const PRIORITY_LABEL: Record<string, string> = { LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente' }
 
 function minutesToHuman(min: number) {
   const h = Math.floor(min / 60), m = min % 60
@@ -28,186 +66,303 @@ function minutesToHuman(min: number) {
   return `${h}h ${m}min`
 }
 
-const PRIORITY_COLOR: Record<string, string> = {
-  LOW: '#94a3b8', MEDIUM: '#38bdf8', HIGH: '#fbbf24', URGENT: '#f87171',
-}
-const PRIORITY_LABEL: Record<string, string> = {
-  LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente',
-}
+// ─── Sub-component: editable points input ────────────────────────────────────
 
-const CRITERIA = [
-  { value: 'IMPACT',          label: 'Impacto',           color: '#f87171', desc: 'Gravidade do problema reportado' },
-  { value: 'AFFECTED_USERS',  label: 'Usuários afetados', color: '#fbbf24', desc: 'Quantidade de pessoas impactadas' },
-]
+function PtsInput({
+  id, initialPts, onSave, color = '#00d9b8',
+}: {
+  id: string; initialPts: number; onSave: (id: string, pts: number) => Promise<void>; color?: string
+}) {
+  const [pts, setPts] = useState(initialPts)
+  const [saving, setSaving] = useState(false)
+  const [flash, setFlash] = useState<'ok' | 'err' | null>(null)
 
-const SCORING_THRESHOLDS = [
-  { label: 'URGENTE', min: 60, color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.2)' },
-  { label: 'ALTA',    min: 40, color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.2)'  },
-  { label: 'MÉDIA',   min: 20, color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  border: 'rgba(56,189,248,0.2)'  },
-  { label: 'BAIXA',   min: 0,  color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)' },
-]
+  const commit = useCallback(async (value: number) => {
+    if (value === initialPts) return
+    setSaving(true)
+    try {
+      await onSave(id, value)
+      setFlash('ok'); setTimeout(() => setFlash(null), 1500)
+    } catch {
+      setFlash('err'); setTimeout(() => setFlash(null), 2000)
+    } finally {
+      setSaving(false)
+    }
+  }, [id, initialPts, onSave])
 
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 7, padding: '6px 10px', fontSize: 12, color: '#c8d6e5',
-  outline: 'none', boxSizing: 'border-box',
-}
-
-export default function TicketSettingsTab({ slaPolices, scoringRules }: Props) {
-  const [isPending, startTransition] = useTransition()
-
-  // New rule form
-  const [newCriterion, setNewCriterion] = useState('IMPACT')
-  const [newValue, setNewValue] = useState('')
-  const [newLabel, setNewLabel] = useState('')
-  const [newPoints, setNewPoints] = useState(10)
-  const [createError, setCreateError] = useState<string | null>(null)
-
-  // Edit state
-  const [editId, setEditId] = useState<string | null>(null)
-  const [editLabel, setEditLabel] = useState('')
-  const [editPoints, setEditPoints] = useState(0)
-  const [editError, setEditError] = useState<string | null>(null)
-
-  // Delete confirm
-  const [deleteId, setDeleteId] = useState<string | null>(null)
-
-  function handleCreate(e: React.FormEvent) {
-    e.preventDefault(); setCreateError(null)
-    startTransition(async () => {
-      const r = await createTicketScoringRule(newCriterion, newValue, newLabel, newPoints)
-      if (r.ok) { setNewValue(''); setNewLabel(''); setNewPoints(10) }
-      else setCreateError(r.error ?? 'Erro')
-    })
-  }
-
-  function startEdit(rule: ScoringRule) {
-    setEditId(rule.id); setEditLabel(rule.label); setEditPoints(rule.points); setEditError(null)
-  }
-
-  function handleUpdate() {
-    setEditError(null)
-    startTransition(async () => {
-      const r = await updateTicketScoringRule(editId!, editLabel, editPoints)
-      if (r.ok) setEditId(null)
-      else setEditError(r.error ?? 'Erro')
-    })
-  }
-
-  function handleDelete() {
-    startTransition(async () => {
-      await deleteTicketScoringRule(deleteId!)
-      setDeleteId(null)
-    })
-  }
-
-  // Group rules by criterion
-  const rulesByCriterion = CRITERIA.map(c => ({
-    ...c,
-    rules: scoringRules.filter(r => r.criterion === c.value).sort((a, b) => b.points - a.points),
-  }))
+  const ringColor = flash === 'ok' ? '#34d399' : flash === 'err' ? '#f87171' : 'rgba(255,255,255,0.1)'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <input
+        type="number"
+        value={pts}
+        min={0}
+        max={100}
+        disabled={saving}
+        onChange={e => setPts(Number(e.target.value))}
+        onBlur={e => commit(Number(e.target.value))}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(pts) } }}
+        style={{
+          width: 58, textAlign: 'right', padding: '5px 8px',
+          background: 'rgba(255,255,255,0.05)', borderRadius: 7,
+          border: `1.5px solid ${ringColor}`,
+          fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+          color, outline: 'none', transition: 'border-color 0.2s',
+          opacity: saving ? 0.5 : 1,
+        }}
+      />
+      <span style={{ fontSize: 11, color: '#2d4060', flexShrink: 0 }}>pts</span>
+      {flash === 'ok' && <span style={{ fontSize: 12, color: '#34d399' }}>✓</span>}
+      {flash === 'err' && <span style={{ fontSize: 12, color: '#f87171' }}>✗</span>}
+    </div>
+  )
+}
 
-      {/* ── TICKET PRIORITY SCORING ─────────────────────────────────── */}
-      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '20px 22px' }}>
-        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 4 }}>PONTUAÇÃO AUTOMÁTICA DE PRIORIDADE</p>
-        <p style={{ fontSize: 12, color: '#3d5068', marginBottom: 16 }}>
-          Ao abrir um chamado, o sistema soma pontos por critério e determina a prioridade automaticamente.
-        </p>
+// ─── Main component ───────────────────────────────────────────────────────────
 
-        {/* Thresholds */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 18 }}>
-          {SCORING_THRESHOLDS.map(t => (
-            <div key={t.label} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: t.color }}>{t.label}</p>
-              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, fontWeight: 800, color: t.color, marginTop: 2 }}>
-                {t.min === 0 ? '< 20' : `≥ ${t.min}`}
-              </p>
-              <p style={{ fontSize: 10, color: '#2d4060', marginTop: 2 }}>pontos</p>
-            </div>
-          ))}
-        </div>
+export default function TicketSettingsTab({ slaPolices, ticketCategories, departments }: Props) {
+  const [, startTransition] = useTransition()
 
-        {/* Rules by criterion */}
-        {rulesByCriterion.map(group => (
-          <div key={group.value} style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: group.color, letterSpacing: '0.08em' }}>
-                {group.label.toUpperCase()}
-              </span>
-              <span style={{ fontSize: 11, color: '#2d4060' }}>— {group.desc}</span>
-            </div>
-            {group.rules.length === 0 ? (
-              <p style={{ fontSize: 11, color: '#2d4060', fontStyle: 'italic', marginLeft: 12 }}>Nenhuma regra cadastrada para este critério</p>
-            ) : group.rules.map((rule, ri) => (
-              editId === rule.id ? (
-                <div key={rule.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: 'rgba(0,217,184,0.04)', borderRadius: 8, marginBottom: 4 }}>
-                  <input value={editLabel} onChange={e => setEditLabel(e.target.value)} style={{ ...inputStyle, flex: 1 }} placeholder="Rótulo" />
-                  <input type="number" value={editPoints} onChange={e => setEditPoints(Number(e.target.value))} style={{ ...inputStyle, width: 70, textAlign: 'right' }} min={0} />
-                  <span style={{ fontSize: 10, color: '#2d4060' }}>pts</span>
-                  <button onClick={handleUpdate} disabled={isPending} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace" }}>Salvar</button>
-                  <button onClick={() => setEditId(null)} disabled={isPending} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#3d5068', fontFamily: "'JetBrains Mono', monospace" }}>✕</button>
-                  {editError && <span style={{ fontSize: 11, color: '#f87171' }}>⚠ {editError}</span>}
-                </div>
-              ) : deleteId === rule.id ? (
-                <div key={rule.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: 'rgba(248,113,113,0.06)', borderRadius: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, color: '#f87171', flex: 1 }}>Excluir "{rule.label}"?</span>
-                  <button onClick={handleDelete} disabled={isPending} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'rgba(248,113,113,0.15)', border: '1px solid rgba(248,113,113,0.3)', color: '#f87171', fontFamily: "'JetBrains Mono', monospace" }}>Confirmar</button>
-                  <button onClick={() => setDeleteId(null)} disabled={isPending} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#3d5068', fontFamily: "'JetBrains Mono', monospace" }}>Cancelar</button>
-                </div>
-              ) : (
-                <div key={rule.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 8, marginBottom: 3, opacity: rule.active ? 1 : 0.5, background: 'rgba(255,255,255,0.01)' }}>
-                  <span style={{ flex: 1, fontSize: 12, color: '#8ba5c0' }}>{rule.label}</span>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: group.color }}>{rule.points} pts</span>
-                  <button onClick={() => startEdit(rule)} disabled={isPending} style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, cursor: 'pointer', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)', color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>Editar</button>
-                  <button onClick={() => startTransition(() => toggleTicketScoringRuleActive(rule.id))} disabled={isPending} style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, cursor: 'pointer', background: rule.active ? 'rgba(248,113,113,0.08)' : 'rgba(52,211,153,0.08)', border: `1px solid ${rule.active ? 'rgba(248,113,113,0.2)' : 'rgba(52,211,153,0.2)'}`, color: rule.active ? '#f87171' : '#34d399', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{rule.active ? 'Desativar' : 'Ativar'}</button>
-                  <button onClick={() => setDeleteId(rule.id)} disabled={isPending} style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, cursor: 'pointer', background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)', color: '#f87171', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>✕</button>
-                </div>
-              )
-            ))}
-          </div>
-        ))}
+  const saveCategory = useCallback(async (id: string, pts: number) => {
+    return new Promise<void>((resolve, reject) => {
+      startTransition(async () => {
+        const r = await updateCategoryScoringPoints(id, pts)
+        if (r.ok) resolve(); else reject(new Error(r.error))
+      })
+    })
+  }, [])
 
-        {/* Create rule form */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14, marginTop: 4 }}>
-          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.08em', marginBottom: 10 }}>NOVA REGRA DE PONTUAÇÃO</p>
-          <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 130px' }}>
-              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>CRITÉRIO</label>
-              <select value={newCriterion} onChange={e => setNewCriterion(e.target.value)} style={inputStyle}>
-                {CRITERIA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 110px' }}>
-              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>ID DO VALOR</label>
-              <input value={newValue} onChange={e => setNewValue(e.target.value.toUpperCase().replace(/\s/g, '_'))} placeholder="EX_PROD_DOWN" style={inputStyle} required />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 160px' }}>
-              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>RÓTULO VISÍVEL</label>
-              <input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Ex: Sistema em produção parado" style={inputStyle} required />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 70px' }}>
-              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>PONTOS</label>
-              <input type="number" value={newPoints} onChange={e => setNewPoints(Number(e.target.value))} min={0} max={100} style={{ ...inputStyle, textAlign: 'right' }} />
-            </div>
-            <button type="submit" disabled={isPending || !newValue.trim() || !newLabel.trim()} style={{
-              padding: '7px 16px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-              background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8',
-              fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap',
-              opacity: !newValue.trim() || !newLabel.trim() ? 0.4 : 1,
-            }}>+ Adicionar regra</button>
-          </form>
-          {createError && <p style={{ fontSize: 11, color: '#f87171', marginTop: 8 }}>⚠ {createError}</p>}
+  const saveDepartment = useCallback(async (id: string, pts: number) => {
+    return new Promise<void>((resolve, reject) => {
+      startTransition(async () => {
+        const r = await updateDepartmentScoringPoints(id, pts)
+        if (r.ok) resolve(); else reject(new Error(r.error))
+      })
+    })
+  }, [])
+
+  // Compute max possible score for the legend
+  const maxCategoryPts = Math.max(...ticketCategories.flatMap(c => [c.scoringPoints, ...c.children.map(s => s.scoringPoints)]), 0)
+  const maxDeptPts = Math.max(...departments.map(d => d.scoringPoints), 0)
+  const maxTotal = maxCategoryPts + maxDeptPts
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+
+      {/* ── HOW IT WORKS ──────────────────────────────────────────── */}
+      <div style={{
+        background: 'rgba(0,217,184,0.04)', border: '1px solid rgba(0,217,184,0.12)',
+        borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 14,
+      }}>
+        <span style={{ fontSize: 18, flexShrink: 0 }}>⚡</span>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', marginBottom: 4 }}>
+            Como funciona a prioridade automática
+          </p>
+          <p style={{ fontSize: 12, color: '#4a6580', lineHeight: 1.7 }}>
+            Ao abrir um chamado, o sistema soma a <strong style={{ color: '#8ba5c0' }}>pontuação da categoria</strong> com a{' '}
+            <strong style={{ color: '#8ba5c0' }}>pontuação do departamento</strong> do solicitante.
+            O total determina a prioridade automaticamente. Edite os valores abaixo — as alterações
+            se aplicam imediatamente ao salvar (Enter ou Tab).
+          </p>
+          {maxTotal > 0 && (
+            <p style={{ fontSize: 11, color: '#2d4060', marginTop: 6 }}>
+              Pontuação máxima atual: <strong style={{ color: '#00d9b8' }}>{maxTotal} pts</strong>
+              {' '}(categoria: {maxCategoryPts} + departamento: {maxDeptPts})
+            </p>
+          )}
         </div>
       </div>
 
-      {/* ── SLA POLICIES (read-only) ─────────────────────────────────── */}
-      <div style={{ background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10 }}>
+      {/* ── THRESHOLDS ────────────────────────────────────────────── */}
+      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 20px' }}>
+        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 14 }}>
+          LIMIARES DE PRIORIDADE
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          {THRESHOLDS.map((t, i) => {
+            const next = THRESHOLDS[i - 1]
+            const range = next
+              ? `${t.min} – ${next.min - 1} pts`
+              : `< ${THRESHOLDS[i + 1]?.min ?? 20} pts`
+            const isFirst = i === 0
+            return (
+              <div key={t.label} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
+                <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: t.color, letterSpacing: '0.06em' }}>{t.label}</p>
+                <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 15, fontWeight: 800, color: t.color, margin: '4px 0 2px' }}>
+                  {isFirst ? `≥ ${t.min}` : t.min === 0 ? '< 20' : `≥ ${t.min}`}
+                </p>
+                <p style={{ fontSize: 10, color: '#2d4060' }}>{t.desc}</p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── SCORING BY CATEGORY ───────────────────────────────────── */}
+      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+        }}>
+          <div>
+            <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
+              PONTUAÇÃO POR CATEGORIA
+            </p>
+            <p style={{ fontSize: 11, color: '#2d4060', marginTop: 3 }}>
+              Pontos adicionados quando um chamado é aberto com esta categoria
+            </p>
+          </div>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', flexShrink: 0 }}>
+            {ticketCategories.length} categorias
+          </span>
+        </div>
+
+        {/* Column headers */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 110px',
+          padding: '0 20px', height: 32, alignItems: 'center',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(255,255,255,0.015)',
+        }}>
+          {['CATEGORIA / SUBCATEGORIA', 'PONTUAÇÃO'].map((h, i) => (
+            <div key={i} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.08em', textAlign: i === 1 ? 'right' : 'left' }}>{h}</div>
+          ))}
+        </div>
+
+        {ticketCategories.length === 0 ? (
+          <div style={{ padding: '36px 20px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#2d4060' }}>
+            Nenhuma categoria cadastrada. Crie categorias na aba Categorias.
+          </div>
+        ) : ticketCategories.map((cat, ci) => (
+          <div key={cat.id}>
+            {/* Parent category row */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 110px',
+              padding: '11px 20px', alignItems: 'center',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              background: 'rgba(255,255,255,0.01)',
+              opacity: cat.active ? 1 : 0.45,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cat.active ? '#00d9b8' : '#2d4060', flexShrink: 0 }} />
+                <div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5' }}>{cat.name}</p>
+                  {cat.description && <p style={{ fontSize: 11, color: '#2d4060', marginTop: 1 }}>{cat.description}</p>}
+                </div>
+                {cat.children.length > 0 && (
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1e3048',
+                    background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '1px 5px', flexShrink: 0,
+                  }}>{cat.children.length} sub</span>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <PtsInput
+                  key={`cat-${cat.id}`}
+                  id={cat.id} initialPts={cat.scoringPoints}
+                  onSave={saveCategory} color="#00d9b8"
+                />
+              </div>
+            </div>
+
+            {/* Subcategory rows */}
+            {cat.children.map((sub, si) => (
+              <div key={sub.id} style={{
+                display: 'grid', gridTemplateColumns: '1fr 110px',
+                padding: '9px 20px 9px 40px', alignItems: 'center',
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
+                background: 'rgba(255,255,255,0.005)',
+                opacity: sub.active ? 1 : 0.4,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ color: '#1e3048', fontSize: 11, flexShrink: 0 }}>└</span>
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: '#8ba5c0' }}>{sub.name}</p>
+                    {sub.description && <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{sub.description}</p>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <PtsInput
+                    key={`sub-${sub.id}`}
+                    id={sub.id} initialPts={sub.scoringPoints}
+                    onSave={saveCategory} color="#a78bfa"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* ── SCORING BY DEPARTMENT ─────────────────────────────────── */}
+      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+        }}>
+          <div>
+            <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
+              PONTUAÇÃO POR DEPARTAMENTO DO SOLICITANTE
+            </p>
+            <p style={{ fontSize: 11, color: '#2d4060', marginTop: 3 }}>
+              Pontos adicionados quando o solicitante pertence a este departamento
+            </p>
+          </div>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', flexShrink: 0 }}>
+            {departments.length} depts
+          </span>
+        </div>
+
+        {/* Column headers */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 80px 90px 110px',
+          padding: '0 20px', height: 32, alignItems: 'center',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(255,255,255,0.015)',
+        }}>
+          {['DEPARTAMENTO', 'CÓDIGO', 'USUÁRIOS', 'PONTUAÇÃO'].map((h, i) => (
+            <div key={i} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.08em', textAlign: i === 3 ? 'right' : 'left' }}>{h}</div>
+          ))}
+        </div>
+
+        {departments.length === 0 ? (
+          <div style={{ padding: '36px 20px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#2d4060' }}>
+            Nenhum departamento cadastrado.
+          </div>
+        ) : departments.map((dept, i) => (
+          <div key={dept.id} style={{
+            display: 'grid', gridTemplateColumns: '1fr 80px 90px 110px',
+            padding: '11px 20px', alignItems: 'center',
+            borderBottom: i < departments.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+            opacity: dept.active ? 1 : 0.45,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: dept.active ? '#38bdf8' : '#2d4060', flexShrink: 0 }} />
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5' }}>{dept.name}</p>
+            </div>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#3d5068' }}>{dept.code ?? '—'}</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#38bdf8' }}>
+              {dept._count.users} {dept._count.users === 1 ? 'usuário' : 'usuários'}
+            </span>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <PtsInput
+                key={`dept-${dept.id}`}
+                id={dept.id} initialPts={dept.scoringPoints}
+                onSave={saveDepartment} color="#fbbf24"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── SLA POLICIES ──────────────────────────────────────────── */}
+      <div style={{ background: 'rgba(56,189,248,0.04)', border: '1px solid rgba(56,189,248,0.12)', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 10 }}>
         <span style={{ fontSize: 14, flexShrink: 0 }}>ℹ️</span>
-        <p style={{ fontSize: 12, color: '#3d5068', lineHeight: 1.5 }}>
-          As políticas de SLA definem os prazos de <strong style={{ color: '#8ba5c0' }}>resposta</strong> e <strong style={{ color: '#8ba5c0' }}>resolução</strong> por combinação de categoria e prioridade. O sistema calcula automaticamente os prazos ao abrir cada chamado.
+        <p style={{ fontSize: 12, color: '#3d5068', lineHeight: 1.6 }}>
+          As políticas de SLA definem os prazos de <strong style={{ color: '#8ba5c0' }}>resposta</strong> e{' '}
+          <strong style={{ color: '#8ba5c0' }}>resolução</strong> por prioridade. O sistema calcula os prazos ao abrir cada chamado.
         </p>
       </div>
 
@@ -216,33 +371,45 @@ export default function TicketSettingsTab({ slaPolices, scoringRules }: Props) {
           <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>POLÍTICAS DE SLA</p>
           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060' }}>{slaPolices.length} políticas</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 100px 110px 110px 70px', columnGap: 10, padding: '0 16px', height: 36, alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 130px 110px 100px 100px 70px',
+          columnGap: 10, padding: '0 16px', height: 36, alignItems: 'center',
+          borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)',
+        }}>
           {['NOME', 'CATEGORIA', 'PRIORIDADE', 'RESPOSTA', 'RESOLUÇÃO', 'STATUS'].map((h, i) => (
             <div key={i} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.08em' }}>{h}</div>
           ))}
         </div>
+
         {slaPolices.length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#2d4060' }}>Nenhuma política cadastrada</div>
         ) : slaPolices.map((s, i) => {
-          const pc = s.priority ? PRIORITY_COLOR[s.priority] : '#94a3b8'
+          const pc = s.priority ? PRIORITY_COLOR[s.priority] ?? '#94a3b8' : '#94a3b8'
           return (
-            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 100px 110px 110px 70px', columnGap: 10, padding: '11px 16px', alignItems: 'center', borderBottom: i < slaPolices.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: s.active ? 1 : 0.5 }}>
+            <div key={s.id} style={{
+              display: 'grid', gridTemplateColumns: '1fr 130px 110px 100px 100px 70px',
+              columnGap: 10, padding: '11px 16px', alignItems: 'center',
+              borderBottom: i < slaPolices.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+              opacity: s.active ? 1 : 0.5,
+            }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
               <span style={{ fontSize: 11, color: '#4a6580', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.category?.name ?? '—'}</span>
               {s.priority ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: pc }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: pc }} />{PRIORITY_LABEL[s.priority]}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: pc }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: pc }} />{PRIORITY_LABEL[s.priority] ?? s.priority}
                 </span>
               ) : <span style={{ fontSize: 11, color: '#2d4060' }}>—</span>}
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#38bdf8' }}>{minutesToHuman(s.responseMinutes)}</span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#a78bfa' }}>{minutesToHuman(s.resolutionMinutes)}</span>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: s.active ? '#34d399' : '#f87171', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: s.active ? '#34d399' : '#f87171' }}>
                 <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />{s.active ? 'Ativa' : 'Inativa'}
               </span>
             </div>
           )
         })}
       </div>
+
     </div>
   )
 }
