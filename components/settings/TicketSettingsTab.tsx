@@ -66,6 +66,19 @@ function minutesToHuman(min: number) {
   return `${h}h ${m}min`
 }
 
+// ─── Sub-component: Chevron icon ──────────────────────────────────────────────
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 14 14" fill="none"
+      style={{ flexShrink: 0, transition: 'transform 0.18s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+    >
+      <path d="M5 3l4 4-4 4" stroke="#3d5068" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 // ─── Sub-component: editable points input ────────────────────────────────────
 
 function PtsInput({
@@ -124,6 +137,27 @@ function PtsInput({
 export default function TicketSettingsTab({ slaPolices, ticketCategories, departments }: Props) {
   const [, startTransition] = useTransition()
 
+  // Collapsible state: all parents expanded by default
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(ticketCategories.filter(c => c.children.length > 0).map(c => c.id))
+  )
+
+  function toggleExpand(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function expandAll() {
+    setExpanded(new Set(ticketCategories.filter(c => c.children.length > 0).map(c => c.id)))
+  }
+
+  function collapseAll() {
+    setExpanded(new Set())
+  }
+
   const saveCategory = useCallback(async (id: string, pts: number) => {
     return new Promise<void>((resolve, reject) => {
       startTransition(async () => {
@@ -146,6 +180,9 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
   const maxCategoryPts = Math.max(...ticketCategories.flatMap(c => [c.scoringPoints, ...c.children.map(s => s.scoringPoints)]), 0)
   const maxDeptPts = Math.max(...departments.map(d => d.scoringPoints), 0)
   const maxTotal = maxCategoryPts + maxDeptPts
+
+  // Count parents with children (for toolbar)
+  const parentsWithChildren = ticketCategories.filter(c => c.children.length > 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -182,10 +219,6 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           {THRESHOLDS.map((t, i) => {
-            const next = THRESHOLDS[i - 1]
-            const range = next
-              ? `${t.min} – ${next.min - 1} pts`
-              : `< ${THRESHOLDS[i + 1]?.min ?? 20} pts`
             const isFirst = i === 0
             return (
               <div key={t.label} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
@@ -202,9 +235,11 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
 
       {/* ── SCORING BY CATEGORY ───────────────────────────────────── */}
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+
+        {/* Header */}
         <div style={{
           padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}>
           <div>
             <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
@@ -214,9 +249,25 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
               Pontos adicionados quando um chamado é aberto com esta categoria
             </p>
           </div>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', flexShrink: 0 }}>
-            {ticketCategories.length} categorias
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {parentsWithChildren.length > 0 && (
+              <>
+                <button onClick={expandAll} style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 10, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                }}>▼ Expandir</button>
+                <button onClick={collapseAll} style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 10, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                }}>▶ Recolher</button>
+              </>
+            )}
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+              {ticketCategories.length} categorias
+            </span>
+          </div>
         </div>
 
         {/* Column headers */}
@@ -235,65 +286,121 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
           <div style={{ padding: '36px 20px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#2d4060' }}>
             Nenhuma categoria cadastrada. Crie categorias na aba Categorias.
           </div>
-        ) : ticketCategories.map((cat, ci) => (
-          <div key={cat.id}>
-            {/* Parent category row */}
-            <div style={{
-              display: 'grid', gridTemplateColumns: '1fr 110px',
-              padding: '11px 20px', alignItems: 'center',
-              borderBottom: '1px solid rgba(255,255,255,0.04)',
-              background: 'rgba(255,255,255,0.01)',
-              opacity: cat.active ? 1 : 0.45,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cat.active ? '#00d9b8' : '#2d4060', flexShrink: 0 }} />
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5' }}>{cat.name}</p>
-                  {cat.description && <p style={{ fontSize: 11, color: '#2d4060', marginTop: 1 }}>{cat.description}</p>}
-                </div>
-                {cat.children.length > 0 && (
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1e3048',
-                    background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '1px 5px', flexShrink: 0,
-                  }}>{cat.children.length} sub</span>
-                )}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <PtsInput
-                  key={`cat-${cat.id}`}
-                  id={cat.id} initialPts={cat.scoringPoints}
-                  onSave={saveCategory} color="#00d9b8"
-                />
-              </div>
-            </div>
+        ) : ticketCategories.map((cat, ci) => {
+          const isOpen = expanded.has(cat.id)
+          const hasChildren = cat.children.length > 0
 
-            {/* Subcategory rows */}
-            {cat.children.map((sub, si) => (
-              <div key={sub.id} style={{
+          return (
+            <div key={cat.id} style={{ borderTop: ci > 0 ? '2px solid rgba(255,255,255,0.05)' : 'none' }}>
+
+              {/* Parent category row */}
+              <div style={{
                 display: 'grid', gridTemplateColumns: '1fr 110px',
-                padding: '9px 20px 9px 40px', alignItems: 'center',
-                borderBottom: '1px solid rgba(255,255,255,0.03)',
-                background: 'rgba(255,255,255,0.005)',
-                opacity: sub.active ? 1 : 0.4,
+                padding: '12px 20px', alignItems: 'center',
+                background: 'rgba(255,255,255,0.015)',
+                opacity: cat.active ? 1 : 0.45,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ color: '#1e3048', fontSize: 11, flexShrink: 0 }}>└</span>
-                  <div>
-                    <p style={{ fontSize: 12, fontWeight: 500, color: '#8ba5c0' }}>{sub.name}</p>
-                    {sub.description && <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{sub.description}</p>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* Chevron toggle — only shown if has children */}
+                  {hasChildren ? (
+                    <button
+                      onClick={() => toggleExpand(cat.id)}
+                      style={{
+                        background: 'none', border: 'none', padding: '2px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', flexShrink: 0,
+                        borderRadius: 4,
+                      }}
+                      title={isOpen ? 'Recolher subcategorias' : 'Expandir subcategorias'}
+                    >
+                      <Chevron open={isOpen} />
+                    </button>
+                  ) : (
+                    <span style={{ width: 18, flexShrink: 0 }} />
+                  )}
+
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: cat.active ? '#00d9b8' : '#2d4060', flexShrink: 0 }} />
+
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: '#c8d6e5' }}>{cat.name}</p>
+                    {cat.description && <p style={{ fontSize: 11, color: '#2d4060', marginTop: 1 }}>{cat.description}</p>}
                   </div>
+
+                  {hasChildren && (
+                    <span style={{
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#1e3048',
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+                      borderRadius: 4, padding: '2px 6px', flexShrink: 0, marginLeft: 2,
+                    }}>
+                      {cat.children.length} sub
+                    </span>
+                  )}
+
+                  {!cat.active && (
+                    <span style={{
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#f87171',
+                      background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
+                      borderRadius: 4, padding: '2px 6px', flexShrink: 0,
+                    }}>inativa</span>
+                  )}
                 </div>
+
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <PtsInput
-                    key={`sub-${sub.id}`}
-                    id={sub.id} initialPts={sub.scoringPoints}
-                    onSave={saveCategory} color="#a78bfa"
+                    key={`cat-${cat.id}`}
+                    id={cat.id} initialPts={cat.scoringPoints}
+                    onSave={saveCategory} color="#00d9b8"
                   />
                 </div>
               </div>
-            ))}
-          </div>
-        ))}
+
+              {/* Collapsed hint */}
+              {hasChildren && !isOpen && (
+                <div style={{
+                  padding: '6px 20px 6px 56px',
+                  borderTop: '1px solid rgba(255,255,255,0.03)',
+                  background: 'rgba(255,255,255,0.005)',
+                }}>
+                  <span style={{ fontSize: 10, color: '#1e3048', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {cat.children.length} subcategoria{cat.children.length !== 1 ? 's' : ''} recolhida{cat.children.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+
+              {/* Subcategory rows — shown only when expanded */}
+              {hasChildren && isOpen && cat.children.map((sub) => (
+                <div key={sub.id} style={{
+                  display: 'grid', gridTemplateColumns: '1fr 110px',
+                  padding: '9px 20px 9px 56px', alignItems: 'center',
+                  borderTop: '1px solid rgba(255,255,255,0.03)',
+                  background: 'rgba(255,255,255,0.005)',
+                  opacity: sub.active ? 1 : 0.4,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ color: '#1e3048', fontSize: 11, flexShrink: 0 }}>└</span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 12, fontWeight: 500, color: '#8ba5c0' }}>{sub.name}</p>
+                      {sub.description && <p style={{ fontSize: 10, color: '#2d4060', marginTop: 1 }}>{sub.description}</p>}
+                    </div>
+                    {!sub.active && (
+                      <span style={{
+                        fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#f87171',
+                        background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
+                        borderRadius: 4, padding: '2px 5px', flexShrink: 0,
+                      }}>inativa</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <PtsInput
+                      key={`sub-${sub.id}`}
+                      id={sub.id} initialPts={sub.scoringPoints}
+                      onSave={saveCategory} color="#a78bfa"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
       </div>
 
       {/* ── SCORING BY DEPARTMENT ─────────────────────────────────── */}
