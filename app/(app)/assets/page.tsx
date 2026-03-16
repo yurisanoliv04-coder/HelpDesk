@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import {
   Laptop, Monitor, Printer, Keyboard, MousePointer,
   Headphones, Battery, Network, Smartphone, Package,
@@ -294,11 +295,13 @@ export default async function AssetsPage({
       </div>
 
       {/* ── Advanced filters (client) ─────────────────────────────────────── */}
-      <AssetsFilters
-        locations={locationRows.map(l => l.location!)}
-        categories={assetCategories}
-        perfCounts={{ BOM: perfMap.BOM ?? 0, INTERMEDIARIO: perfMap.INTERMEDIARIO ?? 0, RUIM: perfMap.RUIM ?? 0 }}
-      />
+      <Suspense fallback={<div style={{ height: 72 }} />}>
+        <AssetsFilters
+          locations={locationRows.map(l => l.location!)}
+          categories={assetCategories}
+          perfCounts={{ BOM: perfMap.BOM ?? 0, INTERMEDIARIO: perfMap.INTERMEDIARIO ?? 0, RUIM: perfMap.RUIM ?? 0 }}
+        />
+      </Suspense>
 
       {/* ── Department chart ──────────────────────────────────────────────── */}
       <AssetsDeptChart data={deptChartData} />
