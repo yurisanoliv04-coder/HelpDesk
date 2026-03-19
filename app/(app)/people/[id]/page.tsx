@@ -3,33 +3,17 @@ import { auth } from '@/lib/auth/config'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Laptop, Monitor, Printer, Keyboard, MousePointer,
-  Headphones, Battery, Network, Smartphone, Package,
-  Cpu, HardDrive, Server, Tablet, Camera,
   ArrowRight, ArrowLeft, ArrowLeftRight, Repeat2,
   Wrench, CheckCircle2, Trash2, Share2, CornerDownLeft,
   type LucideProps,
 } from 'lucide-react'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 import SystemAccessGrid from '@/components/people/SystemAccessGrid'
 import NotesPanel from '@/components/people/NotesPanel'
 import FilesPanel from '@/components/people/FilesPanel'
 import PersonTabBar from '@/components/people/PersonTabBar'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-
-// ─── Icon maps ───────────────────────────────────────────────────────────────
-const assetIconMap: Record<string, React.ComponentType<LucideProps>> = {
-  laptop: Laptop, monitor: Monitor, printer: Printer, keyboard: Keyboard,
-  'mouse-pointer': MousePointer, headphones: Headphones, battery: Battery,
-  network: Network, smartphone: Smartphone, package: Package,
-  cpu: Cpu, 'hard-drive': HardDrive, server: Server, tablet: Tablet, camera: Camera,
-}
-
-function CategoryIcon({ name }: { name: string | null }) {
-  if (!name) return <Package size={14} color="#3d5068" />
-  const Icon = assetIconMap[name]
-  return Icon ? <Icon size={14} color="#3d5068" /> : <Package size={14} color="#3d5068" />
-}
 
 // ─── Role / status config ────────────────────────────────────────────────────
 const roleLabel: Record<string, string> = {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useCallback } from 'react'
+import { useState, useTransition, useCallback, useEffect } from 'react'
 import { updateCategoryScoringPoints, updateDepartmentScoringPoints } from '@/app/(app)/settings/actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -142,20 +142,32 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
     () => new Set(ticketCategories.filter(c => c.children.length > 0).map(c => c.id))
   )
 
+  // Restore from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('hd_settings_chamados_expanded')
+      if (stored !== null) setExpanded(new Set(JSON.parse(stored) as string[]))
+    } catch {}
+  }, [])
+
   function toggleExpand(id: string) {
     setExpanded(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
+      try { localStorage.setItem('hd_settings_chamados_expanded', JSON.stringify([...next])) } catch {}
       return next
     })
   }
 
   function expandAll() {
-    setExpanded(new Set(ticketCategories.filter(c => c.children.length > 0).map(c => c.id)))
+    const all = new Set(ticketCategories.filter(c => c.children.length > 0).map(c => c.id))
+    setExpanded(all)
+    try { localStorage.setItem('hd_settings_chamados_expanded', JSON.stringify([...all])) } catch {}
   }
 
   function collapseAll() {
     setExpanded(new Set())
+    try { localStorage.setItem('hd_settings_chamados_expanded', '[]') } catch {}
   }
 
   const saveCategory = useCallback(async (id: string, pts: number) => {

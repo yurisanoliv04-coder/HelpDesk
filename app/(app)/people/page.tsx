@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
+import { TabSaverLink } from '@/components/ui/TabSaverLink'
+import { PaginationBar } from '@/components/ui/PaginationBar'
+
+const PAGE_SIZE = 30
 
 const roleLabel: Record<string, string> = {
   COLABORADOR: 'Colaborador',
@@ -28,7 +33,7 @@ const thStyle: React.CSSProperties = {
 export default async function PeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{ dept?: string; role?: string; q?: string }>
+  searchParams: Promise<{ dept?: string; role?: string; q?: string; page?: string }>
 }) {
   const session = await auth()
   const role = session?.user.role
@@ -36,14 +41,26 @@ export default async function PeoplePage({
 
   const sp = await searchParams
 
+  // Restaura o último filtro de departamento quando não há parâmetro na URL
+  if (!sp.dept && !sp.role && !sp.q) {
+    const cookieStore = await cookies()
+    const saved = cookieStore.get('hd_people_filter')?.value
+    if (saved) redirect(`/people?${decodeURIComponent(saved)}`)
+  }
+
+  const page = Math.max(1, parseInt(sp.page ?? '1', 10) || 1)
+  const skip = (page - 1) * PAGE_SIZE
+
   const where: Record<string, unknown> = {}
   if (sp.dept) where.departmentId = sp.dept
   if (sp.role) where.role = sp.role
 
-  const [users, departments, roleCounts] = await Promise.all([
+  const [users, totalCount, activeCount, departments, roleCounts] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      take: PAGE_SIZE,
+      skip,
       include: {
         department: { select: { id: true, name: true } },
         _count: {
@@ -55,13 +72,14 @@ export default async function PeoplePage({
         },
       },
     }),
+    prisma.user.count({ where }),
+    prisma.user.count({ where: { ...where, active: true } }),
     prisma.department.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
   ])
 
-  const totalCount  = users.length
-  const activeCount = users.filter(u => u.active).length
-  const roleMap     = Object.fromEntries(roleCounts.map(r => [r.role, r._count._all]))
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const roleMap    = Object.fromEntries(roleCounts.map(r => [r.role, r._count._all]))
 
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -131,18 +149,27 @@ export default async function PeoplePage({
         {[{ id: null, name: 'Todos' }, ...departments].map(dept => {
           const isActive = (dept.id === null && !sp.dept) || dept.id === sp.dept
           const href = dept.id ? `/people?dept=${dept.id}${sp.role ? '&role=' + sp.role : ''}` : `/people${sp.role ? '?role=' + sp.role : ''}`
+          const filterValue = dept.id
+            ? `dept=${dept.id}${sp.role ? '&role=' + sp.role : ''}`
+            : (sp.role ? `role=${sp.role}` : '')
           return (
-            <Link key={dept.id ?? 'all'} href={href} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', borderRadius: 7,
-              background: isActive ? 'rgba(0,217,184,0.12)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${isActive ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`,
-              fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
-              fontWeight: isActive ? 700 : 500, color: isActive ? '#00d9b8' : '#3d5068',
-              textDecoration: 'none',
-            }}>
+            <TabSaverLink
+              key={dept.id ?? 'all'}
+              href={href}
+              cookieKey="hd_people_filter"
+              cookieValue={filterValue}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 7,
+                background: isActive ? 'rgba(0,217,184,0.12)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${isActive ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                fontWeight: isActive ? 700 : 500, color: isActive ? '#00d9b8' : '#3d5068',
+                textDecoration: 'none',
+              }}
+            >
               {dept.name}
-            </Link>
+            </TabSaverLink>
           )
         })}
       </div>
@@ -282,10 +309,24 @@ export default async function PeoplePage({
         })}
       </div>
 
-      {users.length > 0 && (
-        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', textAlign: 'center' }}>
-          Exibindo {users.length} usuários · clique em qualquer linha para ver o perfil completo
-        </p>
+      {totalCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+            Página {page} de {totalPages} · {totalCount} usuário{totalCount !== 1 ? 's' : ''} no total
+          </p>
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            buildHref={p => {
+              const params = new URLSearchParams()
+              if (sp.dept) params.set('dept', sp.dept)
+              if (sp.role) params.set('role', sp.role)
+              if (sp.q) params.set('q', sp.q)
+              params.set('page', String(p))
+              return `/people?${params.toString()}`
+            }}
+          />
+        </div>
       )}
     </div>
   )

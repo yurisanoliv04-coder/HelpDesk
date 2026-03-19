@@ -37,7 +37,6 @@ async function main() {
     const result = scoreComputer({
       ramGb:         asset.ramGb,
       storageType:   asset.storageType as StorageType | null,
-      cpuBrand:      asset.cpuBrand as CpuBrand | null,
       cpuModel:      asset.cpuModel,
       cpuGeneration: asset.cpuGeneration,
     })

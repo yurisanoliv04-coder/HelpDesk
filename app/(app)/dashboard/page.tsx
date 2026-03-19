@@ -59,8 +59,13 @@ async function getWeeklyData(): Promise<WeeklyChartData[]> {
     const idx = 29 - i
     const d = subDays(now, idx)
     const key = format(d, 'yyyy-MM-dd')
+    const dayNum = parseInt(format(d, 'd'), 10)
+    // On the 1st of a month, show "1/MMM" (e.g. "1/mar") for context
+    const label = dayNum === 1
+      ? `1/${format(d, 'MMM', { locale: ptBR })}`
+      : format(d, 'd')
     return {
-      day: format(d, 'd'),   // day-of-month, e.g. '1', '10', '28'
+      day: label,
       done: dayMap[key].done,
       open: dayMap[key].open,
       isToday: idx === 0,

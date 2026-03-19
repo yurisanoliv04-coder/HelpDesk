@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 
 type Category = {
   id: string
@@ -212,7 +213,9 @@ export default function NewTicketForm({ categories, users, solutions, currentUse
                 }}
               >
                 {cat.icon && (
-                  <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>{cat.icon}</span>
+                  <span style={{ display: 'block', marginBottom: 4 }}>
+                    <CategoryIcon name={cat.icon} size={18} color={active ? '#00d9b8' : '#3d5068'} />
+                  </span>
                 )}
                 <span style={{
                   fontSize: 13, fontWeight: 600,
@@ -370,15 +373,7 @@ export default function NewTicketForm({ categories, users, solutions, currentUse
                       border: '1px solid rgba(0,217,184,0.15)',
                     }}
                   >
-                    {asset.category.icon ? (
-                      <span style={{ fontSize: 14, lineHeight: 1 }}>{asset.category.icon}</span>
-                    ) : (
-                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#3d5068" strokeWidth={2}>
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <line x1="8" y1="21" x2="16" y2="21" strokeLinecap="round" strokeLinejoin="round" />
-                        <line x1="12" y1="17" x2="12" y2="21" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
+                    <CategoryIcon name={asset.category.icon} size={14} color="#00d9b8" />
                     <div>
                       <span style={{
                         fontFamily: "'JetBrains Mono', monospace", fontSize: 10,

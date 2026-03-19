@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import {
   createTicketCategory, createTicketSubcategory,
   updateTicketCategory, deleteTicketCategory,
   toggleTicketCategoryActive,
-  createAssetCategory, toggleAssetCategoryActive,
 } from '@/app/(app)/settings/actions'
+import AssetsSettingsTab from './AssetsSettingsTab'
+import type { AssetCustomFieldDefData, AssetModelData } from '@/app/(app)/settings/actions'
+import type { ComputerScoringConfig } from '@/lib/scoring/computer'
 
 interface TicketCategory {
   id: string; name: string; description: string | null
@@ -17,14 +19,22 @@ interface AssetCategory {
   id: string; name: string; icon: string | null
   active: boolean; _count: { assets: number }
 }
-interface Props { ticketCategories: TicketCategory[]; assetCategories: AssetCategory[] }
+interface Props {
+  ticketCategories: TicketCategory[]
+  assetCategories: AssetCategory[]
+  locations: string[]
+  customFieldDefs: AssetCustomFieldDefData[]
+  assetModels: AssetModelData[]
+  departments: { id: string; name: string }[]
+  totalAssets: number
+  scoringConfig: ComputerScoringConfig
+}
 
 const iStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: 8, padding: '7px 10px', fontSize: 13, color: '#c8d6e5',
   outline: 'none', boxSizing: 'border-box',
 }
-const ICON_OPTIONS = ['laptop', 'monitor', 'printer', 'keyboard', 'mouse-pointer', 'headphones', 'battery', 'network', 'smartphone', 'package', 'cpu', 'hard-drive', 'server', 'tablet', 'camera']
 
 // ── Chevron SVG ────────────────────────────────────────────────────────────────
 function Chevron({ open }: { open: boolean }) {
@@ -45,30 +55,58 @@ function Chip({ label, color }: { label: string; color: string }) {
   )
 }
 
-export default function CategoriesTab({ ticketCategories, assetCategories }: Props) {
+const SUB_KEY = 'hd_settings_categories_sub'
+const EXPANDED_KEY = 'hd_settings_categories_expanded'
+
+export default function CategoriesTab({
+  ticketCategories, assetCategories, locations, customFieldDefs, assetModels, departments, totalAssets, scoringConfig,
+}: Props) {
   const [sub, setSub] = useState<'chamados' | 'ativos'>('chamados')
   const [isPending, startTransition] = useTransition()
 
   // Expanded/collapsed per parent (default: all expanded)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(ticketCategories.map(c => c.id)))
 
+  // Load persisted state from localStorage on mount
+  useEffect(() => {
+    try {
+      const storedSub = localStorage.getItem(SUB_KEY)
+      if (storedSub === 'chamados' || storedSub === 'ativos') setSub(storedSub)
+    } catch {}
+    try {
+      const storedExpanded = localStorage.getItem(EXPANDED_KEY)
+      if (storedExpanded) setExpanded(new Set(JSON.parse(storedExpanded) as string[]))
+    } catch {}
+  }, [])
+
+  function handleSubChange(val: 'chamados' | 'ativos') {
+    setSub(val)
+    try { localStorage.setItem(SUB_KEY, val) } catch {}
+  }
+
   function toggleExpand(id: string) {
     setExpanded(prev => {
       const next = new Set(prev)
       next.has(id) ? next.delete(id) : next.add(id)
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])) } catch {}
       return next
     })
   }
-  function expandAll() { setExpanded(new Set(ticketCategories.map(c => c.id))) }
-  function collapseAll() { setExpanded(new Set()) }
+
+  function expandAll() {
+    const next = new Set(ticketCategories.map(c => c.id))
+    setExpanded(next)
+    try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])) } catch {}
+  }
+
+  function collapseAll() {
+    setExpanded(new Set())
+    try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([])) } catch {}
+  }
 
   // Ticket create form
   const [tName, setTName] = useState(''); const [tDesc, setTDesc] = useState('')
   const [tError, setTError] = useState<string | null>(null); const [tSuccess, setTSuccess] = useState(false)
-
-  // Asset create form
-  const [aName, setAName] = useState(''); const [aIcon, setAIcon] = useState('')
-  const [aError, setAError] = useState<string | null>(null); const [aSuccess, setASuccess] = useState(false)
 
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null)
@@ -90,15 +128,6 @@ export default function CategoriesTab({ ticketCategories, assetCategories }: Pro
       const r = await createTicketCategory(tName, tDesc)
       if (r.ok) { setTName(''); setTDesc(''); setTSuccess(true); setTimeout(() => setTSuccess(false), 3000) }
       else setTError(r.error ?? 'Erro')
-    })
-  }
-
-  function handleCreateAsset(e: React.FormEvent) {
-    e.preventDefault(); setAError(null); setASuccess(false)
-    startTransition(async () => {
-      const r = await createAssetCategory(aName, aIcon)
-      if (r.ok) { setAName(''); setAIcon(''); setASuccess(true); setTimeout(() => setASuccess(false), 3000) }
-      else setAError(r.error ?? 'Erro')
     })
   }
 
@@ -131,7 +160,11 @@ export default function CategoriesTab({ ticketCategories, assetCategories }: Pro
       if (r.ok) {
         setSubParentId(null); setSubName(''); setSubDesc('')
         // auto-expand parent
-        setExpanded(prev => new Set([...prev, subParentId!]))
+        setExpanded(prev => {
+          const next = new Set([...prev, subParentId!])
+          try { localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next])) } catch {}
+          return next
+        })
       } else setSubError(r.error ?? 'Erro')
     })
   }
@@ -149,8 +182,8 @@ export default function CategoriesTab({ ticketCategories, assetCategories }: Pro
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button style={tabBtn(sub === 'chamados')} onClick={() => setSub('chamados')}>Chamados</button>
-        <button style={tabBtn(sub === 'ativos')} onClick={() => setSub('ativos')}>Ativos / Patrimônio</button>
+        <button style={tabBtn(sub === 'chamados')} onClick={() => handleSubChange('chamados')}>Chamados</button>
+        <button style={tabBtn(sub === 'ativos')} onClick={() => handleSubChange('ativos')}>Ativos / Patrimônio</button>
       </div>
 
       {/* ══════════════════════════════════════ CHAMADOS ══════════════════════════════════════ */}
@@ -347,47 +380,15 @@ export default function CategoriesTab({ ticketCategories, assetCategories }: Pro
 
       {/* ══════════════════════════════════════ ATIVOS ══════════════════════════════════════ */}
       {sub === 'ativos' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 22px' }}>
-            <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 14 }}>NOVA CATEGORIA DE ATIVO</p>
-            <form onSubmit={handleCreateAsset} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div style={{ flex: '2 1 180px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>NOME *</label>
-                <input value={aName} onChange={e => setAName(e.target.value)} placeholder="Ex: Impressora" style={iStyle} required />
-              </div>
-              <div style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>ÍCONE</label>
-                <select value={aIcon} onChange={e => setAIcon(e.target.value)} style={iStyle}>
-                  <option value="">— nenhum —</option>
-                  {ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
-                </select>
-              </div>
-              <button type="submit" disabled={isPending || !aName.trim()} style={{ padding: '9px 22px', borderRadius: 8, height: 38, flexShrink: 0, background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'JetBrains Mono', monospace", opacity: !aName.trim() ? 0.4 : 1 }}>+ Adicionar</button>
-            </form>
-            {aError && <p style={{ fontSize: 12, color: '#f87171', marginTop: 8 }}>⚠ {aError}</p>}
-            {aSuccess && <p style={{ fontSize: 12, color: '#34d399', marginTop: 8 }}>✓ Categoria criada</p>}
-          </div>
-          <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 80px 80px 100px', columnGap: 14, padding: '0 20px', height: 38, alignItems: 'center', borderBottom: '2px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
-              {['NOME', 'ÍCONE', 'ATIVOS', 'STATUS', 'AÇÃO'].map((h, i) => (
-                <div key={i} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#2d4060', letterSpacing: '0.1em' }}>{h}</div>
-              ))}
-            </div>
-            {assetCategories.length === 0 ? (
-              <div style={{ padding: '48px 22px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#2d4060' }}>Nenhuma categoria cadastrada</div>
-            ) : assetCategories.map((c, i) => (
-              <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 80px 80px 100px', columnGap: 14, padding: '13px 20px', alignItems: 'center', borderBottom: i < assetCategories.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', opacity: c.active ? 1 : 0.5 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5' }}>{c.name}</p>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#4a6580' }}>{c.icon ?? '—'}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>{c._count.assets}</span>
-                <Chip label={c.active ? 'Ativa' : 'Inativa'} color={c.active ? '#34d399' : '#f87171'} />
-                <button onClick={() => startTransition(() => toggleAssetCategoryActive(c.id))} disabled={isPending} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 10, cursor: 'pointer', background: c.active ? 'rgba(248,113,113,0.08)' : 'rgba(52,211,153,0.08)', border: `1px solid ${c.active ? 'rgba(248,113,113,0.2)' : 'rgba(52,211,153,0.2)'}`, color: c.active ? '#f87171' : '#34d399', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
-                  {c.active ? 'Desativar' : 'Ativar'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <AssetsSettingsTab
+          assetCategories={assetCategories}
+          locations={locations}
+          customFieldDefs={customFieldDefs}
+          assetModels={assetModels}
+          departments={departments}
+          totalAssets={totalAssets}
+          scoringConfig={scoringConfig}
+        />
       )}
     </div>
   )
@@ -411,15 +412,15 @@ function EditRow({ name, desc, setName, setDesc, error, onSave, onCancel, isPend
   name: string; desc: string; setName: (v: string) => void; setDesc: (v: string) => void
   error: string | null; onSave: () => void; onCancel: () => void; isPending: boolean; isParent: boolean
 }) {
-  const iStyle: React.CSSProperties = {
+  const rowStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)',
     borderRadius: 7, padding: '7px 10px', fontSize: 13, color: '#c8d6e5', outline: 'none', boxSizing: 'border-box',
   }
   return (
     <div style={{ padding: `12px 20px 12px ${isParent ? 20 : 56}px`, background: 'rgba(0,217,184,0.03)', borderLeft: '2px solid rgba(0,217,184,0.3)' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome" style={{ ...iStyle, flex: '1 1 160px' }} />
-        <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Descrição" style={{ ...iStyle, flex: '2 1 200px' }} />
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome" style={{ ...rowStyle, flex: '1 1 160px' }} />
+        <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Descrição" style={{ ...rowStyle, flex: '2 1 200px' }} />
         <button onClick={onSave} disabled={isPending || !name.trim()} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>✓ Salvar</button>
         <button onClick={onCancel} disabled={isPending} style={{ padding: '7px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>✕</button>
       </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { MoreVertical, LogIn, LogOut, Copy, Trash2, User } from 'lucide-react'
 import {
@@ -9,6 +9,9 @@ import {
   cloneAsset,
   deleteAsset,
 } from '@/app/(app)/assets/[id]/actions'
+
+// NOTE: check-in/check-out on variant="row" is handled by AssetCheckButton inline.
+// This component still exposes them for variant="detail" (asset detail page).
 
 interface UserOption {
   id: string
@@ -38,19 +41,6 @@ export default function AssetQuickActions({
   const [step, setStep] = useState<Step>('closed')
   const [selectedUserId, setSelectedUserId] = useState('')
   const [isPending, startTransition] = useTransition()
-  const wrapperRef = useRef<HTMLDivElement>(null)
-
-  // Close on outside click
-  useEffect(() => {
-    if (step === 'closed') return
-    function onMouseDown(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setStep('closed')
-      }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    return () => document.removeEventListener('mousedown', onMouseDown)
-  }, [step])
 
   function open(e: React.MouseEvent) {
     e.preventDefault()
@@ -117,9 +107,7 @@ export default function AssetQuickActions({
 
   return (
     <div
-      ref={wrapperRef}
       style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
-      onClick={e => { e.preventDefault(); e.stopPropagation() }}
     >
       {/* Trigger */}
       <button
@@ -162,6 +150,18 @@ export default function AssetQuickActions({
         )}
       </button>
 
+      {/* Backdrop to close on outside click */}
+      {step !== 'closed' && (
+        <div
+          onClick={e => { e.preventDefault(); e.stopPropagation(); setStep('closed') }}
+          style={{
+            position: 'fixed', inset: 0,
+            zIndex: 9998,
+            pointerEvents: 'all',
+          }}
+        />
+      )}
+
       {/* Dropdown panel */}
       {step !== 'closed' && (
         <div
@@ -170,13 +170,14 @@ export default function AssetQuickActions({
             top: '100%',
             right: 0,
             marginTop: 4,
-            background: '#0d1d30',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 10,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            zIndex: 100,
+            background: '#0d1422',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 8,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
+            zIndex: 9999,
             minWidth: 200,
             overflow: 'hidden',
+            pointerEvents: 'all',
           }}
         >
           {/* ── MENU ── */}
@@ -188,8 +189,8 @@ export default function AssetQuickActions({
                 </p>
               </div>
               <div style={{ padding: '4px 0' }}>
-                {/* Check-in */}
-                {!isStock && (
+                {/* Check-in / Check-out only shown in detail variant (row uses inline AssetCheckButton) */}
+                {variant === 'detail' && !isStock && (
                   <MenuButton
                     icon={<LogIn size={13} />}
                     label="Check-in"
@@ -198,14 +199,15 @@ export default function AssetQuickActions({
                     onClick={handleCheckIn}
                   />
                 )}
-                {/* Check-out */}
-                <MenuButton
-                  icon={<LogOut size={13} />}
-                  label="Check-out"
-                  desc="Alocar para usuário"
-                  color="#34d399"
-                  onClick={handleCheckoutStep}
-                />
+                {variant === 'detail' && (
+                  <MenuButton
+                    icon={<LogOut size={13} />}
+                    label="Check-out"
+                    desc="Alocar para usuário"
+                    color="#34d399"
+                    onClick={handleCheckoutStep}
+                  />
+                )}
                 {/* Clone */}
                 <MenuButton
                   icon={<Copy size={13} />}

@@ -1,81 +1,158 @@
 import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
+import { ReportsNoSSR } from '@/components/reports/ReportsNoSSR'
+
+const PT_MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 async function getReportData() {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
 
   const [
-    ticketsThisMonth,
     ticketsByStatus,
     ticketsByPriority,
-    ticketsByCategory,
+    ticketsByCategoryRaw,
     assetsByStatus,
     assetsByPerformance,
-    recentMovements,
-    topRequesters,
+    thisMonthCount,
+    lastMonthCount,
+    trendTickets,
+    eventsByActorRaw,
+    weakAssets,
+    totalAssets,
+    totalMovements,
   ] = await Promise.all([
-    prisma.ticket.count({ where: { createdAt: { gte: startOfMonth } } }),
-    prisma.ticket.groupBy({ by: ['status'], _count: true }),
-    prisma.ticket.groupBy({ by: ['priority'], _count: true }),
+    prisma.ticket.groupBy({ by: ['status'], _count: { id: true } }),
+    prisma.ticket.groupBy({ by: ['priority'], _count: { id: true } }),
     prisma.ticket.groupBy({
       by: ['categoryId'],
-      _count: true,
+      _count: { id: true },
       orderBy: { _count: { categoryId: 'desc' } },
-      take: 5,
+      take: 8,
     }),
-    prisma.asset.groupBy({ by: ['status'], _count: true }),
-    prisma.asset.groupBy({ by: ['performanceLabel'], _count: true }),
+    prisma.asset.groupBy({ by: ['status'], _count: { id: true } }),
+    prisma.asset.groupBy({
+      by: ['performanceLabel'],
+      _count: { id: true },
+      where: { performanceLabel: { not: null } },
+    }),
+    prisma.ticket.count({ where: { createdAt: { gte: startOfMonth } } }),
+    prisma.ticket.count({ where: { createdAt: { gte: lastMonthStart, lt: startOfMonth } } }),
+    prisma.ticket.findMany({
+      where: { createdAt: { gte: sixMonthsAgo } },
+      select: { createdAt: true, status: true },
+    }),
+    prisma.ticketEvent.groupBy({
+      by: ['actorId'],
+      _count: { id: true },
+      where: { actorId: { not: null } },
+      orderBy: { _count: { id: 'desc' } },
+      take: 30,
+    }),
+    prisma.asset.findMany({
+      where: {
+        performanceLabel: { in: ['RUIM', 'INTERMEDIARIO'] },
+        status: { in: ['DEPLOYED', 'STOCK'] },
+      },
+      select: {
+        id: true,
+        tag: true,
+        name: true,
+        cpuModel: true,
+        ramGb: true,
+        storageGb: true,
+        performanceScore: true,
+        performanceLabel: true,
+        location: true,
+        assignedToUser: { select: { name: true } },
+        category: { select: { name: true } },
+      },
+      orderBy: { performanceScore: 'asc' },
+      take: 20,
+    }),
+    prisma.asset.count(),
     prisma.assetMovement.count({ where: { createdAt: { gte: startOfMonth } } }),
-    prisma.ticket.groupBy({
-      by: ['requesterId'],
-      _count: true,
-      orderBy: { _count: { requesterId: 'desc' } },
-      take: 5,
-    }),
   ])
 
-  const categories = await prisma.ticketCategory.findMany({ select: { id: true, name: true } })
-  const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]))
-
-  const requesters = await prisma.user.findMany({
-    where: { id: { in: topRequesters.map((r) => r.requesterId) } },
+  // Resolve category names
+  const categoryIds = ticketsByCategoryRaw.map((t) => t.categoryId)
+  const categories = await prisma.ticketCategory.findMany({
+    where: { id: { in: categoryIds } },
     select: { id: true, name: true },
   })
-  const requesterMap = Object.fromEntries(requesters.map((u) => [u.id, u.name]))
+  const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]))
+
+  const ticketsByCategory = ticketsByCategoryRaw.map((t) => ({
+    name: categoryMap[t.categoryId] ?? 'Desconhecida',
+    count: t._count.id,
+  }))
+
+  // Resolve actor names/roles for team activity
+  const actorIds = eventsByActorRaw.map((e) => e.actorId).filter(Boolean) as string[]
+  const actors = await prisma.user.findMany({
+    where: { id: { in: actorIds } },
+    select: { id: true, name: true, role: true },
+  })
+  const actorMap = Object.fromEntries(actors.map((u) => [u.id, u]))
+
+  const techActivity = eventsByActorRaw
+    .filter((e) => {
+      const u = actorMap[e.actorId!]
+      return u && (u.role === 'TECNICO' || u.role === 'ADMIN')
+    })
+    .slice(0, 8)
+    .map((e) => ({
+      name: actorMap[e.actorId!]?.name ?? 'Desconhecido',
+      count: e._count.id,
+    }))
+
+  const auxActivity = eventsByActorRaw
+    .filter((e) => {
+      const u = actorMap[e.actorId!]
+      return u && u.role === 'AUXILIAR_TI'
+    })
+    .slice(0, 8)
+    .map((e) => ({
+      name: actorMap[e.actorId!]?.name ?? 'Desconhecido',
+      count: e._count.id,
+    }))
+
+  // Build 6-month trend
+  const trend = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    const m = d.getMonth()
+    const y = d.getFullYear()
+    const items = trendTickets.filter(
+      (t) => t.createdAt.getMonth() === m && t.createdAt.getFullYear() === y
+    )
+    return {
+      month: PT_MONTHS[m],
+      criados: items.length,
+      resolvidos: items.filter((t) => ['DONE', 'CANCELED'].includes(t.status)).length,
+    }
+  })
 
   return {
-    ticketsThisMonth,
-    ticketsByStatus,
-    ticketsByPriority,
-    ticketsByCategory: ticketsByCategory.map((t) => ({
-      name: categoryMap[t.categoryId] ?? 'Desconhecida',
-      count: t._count,
+    ticketsByStatus: ticketsByStatus.map((s) => ({ status: s.status, count: s._count.id })),
+    ticketsByPriority: ticketsByPriority.map((p) => ({ priority: p.priority, count: p._count.id })),
+    ticketsByCategory,
+    assetsByStatus: assetsByStatus.map((a) => ({ status: a.status, count: a._count.id })),
+    assetsByPerformance: assetsByPerformance.map((p) => ({
+      label: p.performanceLabel ?? 'SEM_DADOS',
+      count: p._count.id,
     })),
-    assetsByStatus,
-    assetsByPerformance,
-    recentMovements,
-    topRequesters: topRequesters.map((r) => ({
-      name: requesterMap[r.requesterId] ?? 'Desconhecido',
-      count: r._count,
-    })),
+    thisMonthCount,
+    lastMonthCount,
+    trend,
+    techActivity,
+    auxActivity,
+    weakAssets,
+    totalAssets,
+    totalMovements,
   }
-}
-
-const statusLabel: Record<string, string> = {
-  OPEN: 'Aberto', IN_PROGRESS: 'Em atendimento', ON_HOLD: 'Aguardando',
-  DONE: 'Concluído', CANCELED: 'Cancelado',
-}
-const priorityLabel: Record<string, string> = {
-  LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente',
-}
-const assetStatusLabel: Record<string, string> = {
-  STOCK: 'Estoque', DEPLOYED: 'Implantado', MAINTENANCE: 'Manutenção',
-  DISCARDED: 'Descartado', LOANED: 'Emprestado',
-}
-const perfLabel: Record<string, string> = {
-  BOM: 'Bom', INTERMEDIARIO: 'Intermediário', RUIM: 'Ruim',
 }
 
 export default async function ReportsPage() {
@@ -85,101 +162,20 @@ export default async function ReportsPage() {
   const data = await getReportData()
 
   return (
-    <div className="w-full space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Relatórios</h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Visão consolidada do sistema</p>
-      </div>
-
-      {/* Chamados do mês */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Chamados no mês</p>
-          <p className="text-4xl font-bold text-slate-900 dark:text-white mt-2">{data.ticketsThisMonth}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Mês corrente</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Movimentações no mês</p>
-          <p className="text-4xl font-bold text-slate-900 dark:text-white mt-2">{data.recentMovements}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Entradas, saídas, trocas</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Ativos no parque</p>
-          <p className="text-4xl font-bold text-slate-900 dark:text-white mt-2">
-            {data.assetsByStatus.reduce((acc, a) => acc + a._count, 0)}
-          </p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Total cadastrado</p>
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Chamados por status */}
-        <ReportCard title="Chamados por Status">
-          {data.ticketsByStatus.map((s) => (
-            <Row key={s.status} label={statusLabel[s.status] ?? s.status} value={s._count} />
-          ))}
-        </ReportCard>
-
-        {/* Chamados por prioridade */}
-        <ReportCard title="Chamados por Prioridade">
-          {data.ticketsByPriority.map((p) => (
-            <Row key={p.priority} label={priorityLabel[p.priority] ?? p.priority} value={p._count} />
-          ))}
-        </ReportCard>
-
-        {/* Top categorias */}
-        <ReportCard title="Top Categorias de Chamado">
-          {data.ticketsByCategory.length === 0
-            ? <p className="text-slate-400 text-sm">Sem dados</p>
-            : data.ticketsByCategory.map((c) => (
-                <Row key={c.name} label={c.name} value={c.count} />
-              ))}
-        </ReportCard>
-
-        {/* Ativos por status */}
-        <ReportCard title="Ativos por Status">
-          {data.assetsByStatus.map((a) => (
-            <Row key={a.status} label={assetStatusLabel[a.status] ?? a.status} value={a._count} />
-          ))}
-        </ReportCard>
-
-        {/* Performance do parque */}
-        <ReportCard title="Qualidade do Parque de Máquinas">
-          {data.assetsByPerformance.filter((p) => p.performanceLabel).map((p) => (
-            <Row key={p.performanceLabel} label={perfLabel[p.performanceLabel!] ?? p.performanceLabel!} value={p._count} />
-          ))}
-          {data.assetsByPerformance.every((p) => !p.performanceLabel) && (
-            <p className="text-slate-400 text-sm">Nenhum ativo com specs cadastradas</p>
-          )}
-        </ReportCard>
-
-        {/* Top solicitantes */}
-        <ReportCard title="Maiores Solicitantes">
-          {data.topRequesters.length === 0
-            ? <p className="text-slate-400 text-sm">Sem dados</p>
-            : data.topRequesters.map((r) => (
-                <Row key={r.name} label={r.name} value={r.count} />
-              ))}
-        </ReportCard>
-      </div>
-    </div>
-  )
-}
-
-function ReportCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4 uppercase tracking-wider">{title}</h2>
-      <div className="space-y-3">{children}</div>
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-slate-600 dark:text-slate-400">{label}</span>
-      <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{value}</span>
-    </div>
+    <ReportsNoSSR
+      ticketsByStatus={data.ticketsByStatus}
+      ticketsByPriority={data.ticketsByPriority}
+      ticketsByCategory={data.ticketsByCategory}
+      assetsByStatus={data.assetsByStatus}
+      assetsByPerformance={data.assetsByPerformance}
+      thisMonthCount={data.thisMonthCount}
+      lastMonthCount={data.lastMonthCount}
+      trend={data.trend}
+      techActivity={data.techActivity}
+      auxActivity={data.auxActivity}
+      weakAssets={data.weakAssets}
+      totalAssets={data.totalAssets}
+      totalMovements={data.totalMovements}
+    />
   )
 }

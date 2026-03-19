@@ -92,6 +92,10 @@ body {
 .hover-row:hover { background: var(--bg-elevated) !important; }
 .hover-row-surface:hover { background: var(--bg-surface) !important; }
 
+/* Edit button in asset table rows */
+.edit-btn { color: #3d5068 !important; }
+.edit-btn:hover { background: rgba(0,217,184,0.09) !important; border-color: rgba(0,217,184,0.3) !important; color: #00d9b8 !important; }
+
 /* Interactive cell inside a hover-row (Local, Alocado para) */
 .interactive-cell { border-radius: 5px; padding: 2px 4px; margin: -2px -4px; transition: background 0.12s, color 0.12s; }
 .interactive-cell:hover { background: rgba(0,217,184,0.1); color: #00d9b8 !important; }

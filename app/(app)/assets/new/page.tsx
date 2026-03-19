@@ -10,11 +10,17 @@ export default async function NewAssetPage() {
   const role = session?.user.role
   if (role === 'COLABORADOR' || role === 'AUXILIAR_TI') redirect('/dashboard')
 
-  const [categories, users, initialTag] = await Promise.all([
+  const [categories, users, initialTag, departments, hwParts] = await Promise.all([
     prisma.assetCategory.findMany({
       where: { active: true },
       orderBy: { name: 'asc' },
-      select: { id: true, name: true, icon: true },
+      select: {
+        id: true, name: true, icon: true, isComputer: true,
+        customFields: {
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, label: true, fieldType: true, options: true, sortOrder: true, required: true, isUnique: true },
+        },
+      },
     }),
     prisma.user.findMany({
       where: { active: true },
@@ -22,10 +28,26 @@ export default async function NewAssetPage() {
       select: { id: true, name: true },
     }),
     getNextTag(),
+    prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.hardwarePart.findMany({
+      where: { active: true },
+      orderBy: [{ type: 'asc' }, { scorePoints: 'asc' }],
+      select: { id: true, type: true, brand: true, model: true, scorePoints: true, notes: true },
+    }),
   ])
 
+  const locationOptions = [
+    'Departamento de T.I',
+    'Estoque T.I',
+    ...departments.map(d => d.name),
+  ].filter((v, i, a) => a.indexOf(v) === i)
+
+  const hwCpuParts     = hwParts.filter(p => p.type === 'CPU')
+  const hwRamParts     = hwParts.filter(p => p.type === 'RAM')
+  const hwStorageParts = hwParts.filter(p => p.type === 'STORAGE')
+
   return (
-    <div style={{ width: '100%', maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
       {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -53,6 +75,10 @@ export default async function NewAssetPage() {
         categories={categories}
         users={users}
         initialTag={initialTag}
+        locationOptions={locationOptions}
+        hwCpuParts={hwCpuParts}
+        hwRamParts={hwRamParts}
+        hwStorageParts={hwStorageParts}
       />
 
     </div>

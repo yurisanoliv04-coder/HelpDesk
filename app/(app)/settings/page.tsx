@@ -1,13 +1,22 @@
 import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
+import { cookies } from 'next/headers'
+import { TabSaverLink } from '@/components/ui/TabSaverLink'
 import UsersTab from '@/components/settings/UsersTab'
 import DepartmentsTab from '@/components/settings/DepartmentsTab'
 import CategoriesTab from '@/components/settings/CategoriesTab'
 import ScoringTab from '@/components/settings/ScoringTab'
 import TicketSettingsTab from '@/components/settings/TicketSettingsTab'
-import { getComputerScoringConfig } from './actions'
+import HardwarePartsTab from '@/components/settings/HardwarePartsTab'
+import {
+  getComputerScoringConfig,
+  getAssetLocations,
+  getAssetCustomFieldDefs,
+  getAssetModels,
+  getHardwareParts,
+  getCpuGenerationConfigs,
+} from './actions'
 
 const TABS = [
   { key: 'usuarios',      label: 'Usuários',          icon: '👥' },
@@ -15,6 +24,7 @@ const TABS = [
   { key: 'chamados',      label: 'Config. Chamados',   icon: '🎫' },
   { key: 'scoring',       label: 'Pontuação',          icon: '📊' },
   { key: 'categorias',    label: 'Categorias',         icon: '🏷️' },
+  { key: 'hardware',      label: 'Hardware',           icon: '🔲' },
 ] as const
 type TabKey = typeof TABS[number]['key']
 
@@ -27,6 +37,16 @@ export default async function SettingsPage({
   if (session?.user.role !== 'ADMIN') redirect('/dashboard')
 
   const { tab: rawTab } = await searchParams
+
+  // Redireciona para a última aba usada (salva em cookie) quando não há parâmetro na URL
+  if (!rawTab) {
+    const cookieStore = await cookies()
+    const saved = cookieStore.get('hd_settings_tab')?.value
+    if (saved && TABS.some(t => t.key === saved)) {
+      redirect(`/settings?tab=${saved}`)
+    }
+  }
+
   const activeTab: TabKey = TABS.some(t => t.key === rawTab) ? (rawTab as TabKey) : 'usuarios'
 
   // Load data for active tab
@@ -34,6 +54,8 @@ export default async function SettingsPage({
     users, departments, ticketCategories, assetCategories, slaPolices,
     chamadosCategories, chamadosDepartments,
     totalAssets, scoringConfig, scoringRules,
+    assetLocations, assetCustomFieldDefs, assetModels, categoriaDepartments,
+    hardwareParts, cpuGenConfigs,
   ] = await Promise.all([
     activeTab === 'usuarios' ? prisma.user.findMany({
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
@@ -67,7 +89,11 @@ export default async function SettingsPage({
 
     activeTab === 'chamados' ? prisma.slaPolicy.findMany({
       orderBy: { name: 'asc' },
-      include: { category: { select: { name: true } } },
+      select: {
+        id: true, name: true, active: true,
+        priority: true, responseMinutes: true, resolutionMinutes: true,
+        category: { select: { name: true } },
+      },
     }) : Promise.resolve([]),
 
     // Categories with scoring points for chamados tab
@@ -92,13 +118,28 @@ export default async function SettingsPage({
       },
     }) : Promise.resolve([]),
 
-    activeTab === 'scoring' ? prisma.asset.count() : Promise.resolve(0),
+    (activeTab === 'scoring' || activeTab === 'categorias') ? prisma.asset.count() : Promise.resolve(0),
 
-    activeTab === 'scoring' ? getComputerScoringConfig() : Promise.resolve(null),
+    (activeTab === 'scoring' || activeTab === 'categorias') ? getComputerScoringConfig() : Promise.resolve(null),
 
     activeTab === 'chamados' ? prisma.ticketScoringRule.findMany({
       orderBy: [{ criterion: 'asc' }, { points: 'desc' }],
     }) : Promise.resolve([]),
+
+    activeTab === 'categorias' ? getAssetLocations() : Promise.resolve([]),
+    activeTab === 'categorias' ? getAssetCustomFieldDefs() : Promise.resolve([]),
+    activeTab === 'categorias' ? getAssetModels() : Promise.resolve([]),
+
+    // Departments for asset locations display
+    activeTab === 'categorias' ? prisma.department.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }) : Promise.resolve([]),
+
+    // Hardware parts
+    activeTab === 'hardware' ? getHardwareParts() : Promise.resolve([]),
+    // CPU generation configs
+    activeTab === 'hardware' ? getCpuGenerationConfigs() : Promise.resolve([]),
   ])
 
   const deptsForUsers = activeTab === 'usuarios'
@@ -138,9 +179,11 @@ export default async function SettingsPage({
         {TABS.map(t => {
           const isActive = t.key === activeTab
           return (
-            <Link
+            <TabSaverLink
               key={t.key}
               href={`/settings?tab=${t.key}`}
+              cookieKey="hd_settings_tab"
+              cookieValue={t.key}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '9px 16px', borderRadius: '8px 8px 0 0',
@@ -157,7 +200,7 @@ export default async function SettingsPage({
             >
               <span style={{ fontSize: 13 }}>{t.icon}</span>
               {t.label}
-            </Link>
+            </TabSaverLink>
           )
         })}
       </div>
@@ -193,10 +236,23 @@ export default async function SettingsPage({
           />
         )}
 
-        {activeTab === 'categorias' && (
+        {activeTab === 'categorias' && scoringConfig && (
           <CategoriesTab
             ticketCategories={ticketCategories as Parameters<typeof CategoriesTab>[0]['ticketCategories']}
             assetCategories={assetCategories as Parameters<typeof CategoriesTab>[0]['assetCategories']}
+            locations={assetLocations as string[]}
+            customFieldDefs={assetCustomFieldDefs as Parameters<typeof CategoriesTab>[0]['customFieldDefs']}
+            assetModels={assetModels as Parameters<typeof CategoriesTab>[0]['assetModels']}
+            departments={categoriaDepartments as Parameters<typeof CategoriesTab>[0]['departments']}
+            totalAssets={totalAssets as number}
+            scoringConfig={scoringConfig}
+          />
+        )}
+
+        {activeTab === 'hardware' && (
+          <HardwarePartsTab
+            initialParts={hardwareParts as Parameters<typeof HardwarePartsTab>[0]['initialParts']}
+            initialGenConfigs={cpuGenConfigs as Parameters<typeof HardwarePartsTab>[0]['initialGenConfigs']}
           />
         )}
       </div>

@@ -37,11 +37,35 @@ function fmtFull(d: Date) {
   return format(new Date(d), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })
 }
 
+const NOTES_PAGE_SIZE = 10
+
+function ClientPager({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+        Página {page} de {totalPages}
+      </span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button onClick={() => onPage(page - 1)} disabled={page <= 1} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: page <= 1 ? '#1e3048' : '#4a6580', cursor: page <= 1 ? 'not-allowed' : 'pointer', fontSize: 14 }}>‹</button>
+        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+          const p = totalPages <= 7 ? i + 1 : Math.max(1, Math.min(page - 3, totalPages - 6)) + i
+          return (
+            <button key={p} onClick={() => onPage(p)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: p === page ? 'rgba(0,217,184,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${p === page ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: p === page ? '#00d9b8' : '#4a6580', fontWeight: p === page ? 700 : 400, cursor: 'pointer' }}>{p}</button>
+          )
+        })}
+        <button onClick={() => onPage(page + 1)} disabled={page >= totalPages} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: page >= totalPages ? '#1e3048' : '#4a6580', cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: 14 }}>›</button>
+      </div>
+    </div>
+  )
+}
+
 export default function AssetNotesPanel({ assetId, notes: initialNotes, currentUserId, canEdit, isAdmin }: Props) {
   const [notes, setNotes] = useState(initialNotes)
   const [body, setBody] = useState('')
   const [isPending, startTransition] = useTransition()
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleAdd() {
@@ -50,6 +74,7 @@ export default function AssetNotesPanel({ assetId, notes: initialNotes, currentU
     setBody('')
     textareaRef.current?.focus()
 
+    setPage(1)
     startTransition(async () => {
       await addAssetNote(assetId, trimmed)
       setNotes(prev => [{
@@ -130,7 +155,7 @@ export default function AssetNotesPanel({ assetId, notes: initialNotes, currentU
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {notes.map(note => {
+          {notes.slice((page - 1) * NOTES_PAGE_SIZE, page * NOTES_PAGE_SIZE).map(note => {
             const canDelete = isAdmin || note.author.id === currentUserId
             const isDeleting = deletingId === note.id
             return (
@@ -173,6 +198,11 @@ export default function AssetNotesPanel({ assetId, notes: initialNotes, currentU
               </div>
             )
           })}
+          <ClientPager
+            page={page}
+            totalPages={Math.ceil(notes.length / NOTES_PAGE_SIZE)}
+            onPage={setPage}
+          />
         </div>
       )}
     </div>

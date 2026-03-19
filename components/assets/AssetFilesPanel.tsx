@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from 'react'
 import { uploadAssetFile, deleteAssetFile } from '@/app/(app)/assets/[id]/actions'
-import { Paperclip, Trash2, Download, Upload, FileText, Image, FileVideo, FileAudio, FileArchive, FileCode, File } from 'lucide-react'
+import { Paperclip, Trash2, Download, Upload, FileText, Image, FileVideo, FileAudio, FileArchive, FileCode, File, Eye } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -60,6 +60,29 @@ function mimeLabel(mimeType: string, name: string) {
   return ext || 'Arquivo'
 }
 
+const FILES_PAGE_SIZE = 10
+
+function ClientPager({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '8px 0' }}>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+        Página {page} de {totalPages}
+      </span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button onClick={() => onPage(page - 1)} disabled={page <= 1} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: page <= 1 ? '#1e3048' : '#4a6580', cursor: page <= 1 ? 'not-allowed' : 'pointer', fontSize: 14 }}>‹</button>
+        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+          const p = totalPages <= 7 ? i + 1 : Math.max(1, Math.min(page - 3, totalPages - 6)) + i
+          return (
+            <button key={p} onClick={() => onPage(p)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: p === page ? 'rgba(0,217,184,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${p === page ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`, fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: p === page ? '#00d9b8' : '#4a6580', fontWeight: p === page ? 700 : 400, cursor: 'pointer' }}>{p}</button>
+          )
+        })}
+        <button onClick={() => onPage(page + 1)} disabled={page >= totalPages} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: page >= totalPages ? '#1e3048' : '#4a6580', cursor: page >= totalPages ? 'not-allowed' : 'pointer', fontSize: 14 }}>›</button>
+      </div>
+    </div>
+  )
+}
+
 export default function AssetFilesPanel({ assetId, files: initialFiles, currentUserId, canEdit, isAdmin }: Props) {
   const [files, setFiles] = useState(initialFiles)
   const [isPending, startTransition] = useTransition()
@@ -67,12 +90,14 @@ export default function AssetFilesPanel({ assetId, files: initialFiles, currentU
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return
     setError(null)
     setUploading(true)
+    setPage(1)
     for (const file of Array.from(fileList)) {
       if (file.size > 50 * 1024 * 1024) { setError(`"${file.name}" é maior que 50 MB.`); continue }
       const fd = new FormData()
@@ -144,16 +169,17 @@ export default function AssetFilesPanel({ assetId, files: initialFiles, currentU
         </div>
       ) : (
         <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 120px 72px', padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 120px 100px', padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             {['ARQUIVO', 'TIPO', 'TAMANHO', 'ENVIADO POR', ''].map((h, i) => (
               <span key={i} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#1e3048', letterSpacing: '0.1em', textAlign: i === 4 ? 'right' : 'left' }}>{h}</span>
             ))}
           </div>
-          {files.map((file, i) => {
+          {files.slice((page - 1) * FILES_PAGE_SIZE, page * FILES_PAGE_SIZE).map((file, i) => {
             const isDeleting = deletingId === file.id
             const canDelete = isAdmin || file.uploadedBy.id === currentUserId
+            const hasUrl = file.url && file.url !== '#'
             return (
-              <div key={file.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 120px 72px', alignItems: 'center', padding: '12px 16px', background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)', opacity: isDeleting ? 0.3 : 1, transition: 'opacity 0.2s' }}>
+              <div key={file.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 130px 120px 100px', alignItems: 'center', padding: '12px 16px', background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)', opacity: isDeleting ? 0.3 : 1, transition: 'opacity 0.2s' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   <div style={{ width: 34, height: 34, borderRadius: 7, flexShrink: 0, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <FileIcon mimeType={file.mimeType} />
@@ -169,17 +195,43 @@ export default function AssetFilesPanel({ assetId, files: initialFiles, currentU
                   {file.uploadedBy.id === currentUserId ? 'Você' : file.uploadedBy.name}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                  {file.url !== '#' && (
-                    <a href={file.url} download={file.originalName} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#2d4060', textDecoration: 'none', transition: 'all 0.12s' }}
+                  {/* Visualizar */}
+                  {hasUrl && (
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Visualizar"
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#2d4060', textDecoration: 'none', transition: 'all 0.12s' }}
+                      onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'rgba(56,189,248,0.1)'; t.style.borderColor = 'rgba(56,189,248,0.2)'; t.style.color = '#38bdf8' }}
+                      onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'transparent'; t.style.borderColor = 'transparent'; t.style.color = '#2d4060' }}
+                    >
+                      <Eye size={12} />
+                    </a>
+                  )}
+                  {/* Baixar */}
+                  {hasUrl && (
+                    <a
+                      href={file.url}
+                      download={file.originalName}
+                      title="Baixar"
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#2d4060', textDecoration: 'none', transition: 'all 0.12s' }}
                       onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'rgba(0,217,184,0.1)'; t.style.borderColor = 'rgba(0,217,184,0.2)'; t.style.color = '#00d9b8' }}
-                      onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'transparent'; t.style.borderColor = 'transparent'; t.style.color = '#2d4060' }}>
+                      onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'transparent'; t.style.borderColor = 'transparent'; t.style.color = '#2d4060' }}
+                    >
                       <Download size={12} />
                     </a>
                   )}
+                  {/* Excluir */}
                   {canDelete && (
-                    <button onClick={() => handleDelete(file.id)} disabled={isDeleting} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#2d4060', cursor: 'pointer', transition: 'all 0.12s' }}
+                    <button
+                      onClick={() => handleDelete(file.id)}
+                      disabled={isDeleting}
+                      title="Excluir"
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#2d4060', cursor: 'pointer', transition: 'all 0.12s' }}
                       onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'rgba(248,113,113,0.1)'; t.style.borderColor = 'rgba(248,113,113,0.2)'; t.style.color = '#f87171' }}
-                      onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'transparent'; t.style.borderColor = 'transparent'; t.style.color = '#2d4060' }}>
+                      onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'transparent'; t.style.borderColor = 'transparent'; t.style.color = '#2d4060' }}
+                    >
                       <Trash2 size={12} />
                     </button>
                   )}
@@ -189,6 +241,12 @@ export default function AssetFilesPanel({ assetId, files: initialFiles, currentU
           })}
         </div>
       )}
+
+      <ClientPager
+        page={page}
+        totalPages={Math.ceil(files.length / FILES_PAGE_SIZE)}
+        onPage={setPage}
+      />
     </div>
   )
 }

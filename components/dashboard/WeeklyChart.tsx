@@ -84,8 +84,8 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
         <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -28 }}>
           <XAxis
             dataKey="day"
-            interval={4}
-            tick={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fill: '#2d4060' }}
+            interval={1}
+            tick={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fill: '#2d4060' }}
             axisLine={false}
             tickLine={false}
           />

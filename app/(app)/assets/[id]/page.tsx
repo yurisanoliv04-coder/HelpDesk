@@ -3,32 +3,21 @@ import { auth } from '@/lib/auth/config'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
-  Laptop, Monitor, Printer, Keyboard, MousePointer,
-  Headphones, Battery, Network, Smartphone, Package,
-  Cpu, HardDrive, Server, Tablet, Camera,
   ArrowRight, ArrowLeft, ArrowLeftRight, Repeat2,
   Wrench, CheckCircle2, Trash2, Share2, CornerDownLeft,
   User, type LucideProps,
 } from 'lucide-react'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 import AssetTabBar from '@/components/assets/AssetTabBar'
+import { PaginationBar } from '@/components/ui/PaginationBar'
+
+const HIST_PAGE_SIZE = 20
 import AssetEditPanel from '@/components/assets/AssetEditPanel'
 import AssetNotesPanel from '@/components/assets/AssetNotesPanel'
 import AssetFilesPanel from '@/components/assets/AssetFilesPanel'
 import AssetQuickActions from '@/components/assets/AssetQuickActions'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-
-// ─── Icon map ─────────────────────────────────────────────────────────────────
-const iconMap: Record<string, React.ComponentType<LucideProps>> = {
-  laptop: Laptop, monitor: Monitor, printer: Printer, keyboard: Keyboard,
-  'mouse-pointer': MousePointer, headphones: Headphones, battery: Battery,
-  network: Network, smartphone: Smartphone, package: Package,
-  cpu: Cpu, 'hard-drive': HardDrive, server: Server, tablet: Tablet, camera: Camera,
-}
-function CategoryIcon({ name, size = 20 }: { name: string | null; size?: number }) {
-  const Icon = name ? iconMap[name] : null
-  return Icon ? <Icon size={size} color="#3d5068" /> : <Package size={size} color="#3d5068" />
-}
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -65,13 +54,14 @@ export default async function AssetDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; page?: string }>
 }) {
   const session = await auth()
   if (session?.user.role === 'COLABORADOR' || session?.user.role === 'AUXILIAR_TI') redirect('/dashboard')
 
   const { id } = await params
-  const { tab: rawTab } = await searchParams
+  const { tab: rawTab, page: rawPage } = await searchParams
+  const histPage = Math.max(1, parseInt(rawPage ?? '1', 10) || 1)
   const VALID_TABS = ['geral', 'historico', 'notas', 'arquivos'] as const
   type TabKey = typeof VALID_TABS[number]
   const activeTab: TabKey = VALID_TABS.includes(rawTab as TabKey) ? (rawTab as TabKey) : 'geral'
@@ -101,19 +91,25 @@ export default async function AssetDetailPage({
   if (!asset) notFound()
 
   // ── Tab-specific data ──────────────────────────────────────────────────────
-  const movements = activeTab === 'historico'
-    ? await prisma.assetMovement.findMany({
-        where: { assetId: id },
-        include: {
-          fromUser: { select: { id: true, name: true } },
-          toUser:   { select: { id: true, name: true } },
-          actor:    { select: { id: true, name: true } },
-          ticket:   { select: { id: true, code: true, title: true } },
-          order:    { select: { id: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      })
-    : null
+  const [movements, movementsTotal] = activeTab === 'historico'
+    ? await Promise.all([
+        prisma.assetMovement.findMany({
+          where: { assetId: id },
+          include: {
+            fromUser: { select: { id: true, name: true } },
+            toUser:   { select: { id: true, name: true } },
+            actor:    { select: { id: true, name: true } },
+            ticket:   { select: { id: true, code: true, title: true } },
+            order:    { select: { id: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: HIST_PAGE_SIZE,
+          skip: (histPage - 1) * HIST_PAGE_SIZE,
+        }),
+        prisma.assetMovement.count({ where: { assetId: id } }),
+      ])
+    : [null, 0]
+  const histTotalPages = Math.ceil(movementsTotal / HIST_PAGE_SIZE)
 
   const notes = activeTab === 'notas'
     ? await prisma.assetNote.findMany({
@@ -299,7 +295,7 @@ export default async function AssetDetailPage({
       ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'historico' && movements && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {movements.length === 0 ? (
+          {movements.length === 0 && histPage === 1 ? (
             <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <ArrowLeftRight size={28} color="#1e3048" />
               <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#1e3048', fontStyle: 'italic' }}>
@@ -401,6 +397,19 @@ export default async function AssetDetailPage({
                 </div>
               )
             })
+          )}
+
+          {histTotalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+                Página {histPage} de {histTotalPages} · {movementsTotal} registro{movementsTotal !== 1 ? 's' : ''}
+              </p>
+              <PaginationBar
+                page={histPage}
+                totalPages={histTotalPages}
+                buildHref={p => `/assets/${id}?tab=historico&page=${p}`}
+              />
+            </div>
           )}
         </div>
       )}

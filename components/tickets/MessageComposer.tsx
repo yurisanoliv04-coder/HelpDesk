@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Visibility = 'PUBLIC' | 'TECHNICIANS' | 'AUTHOR'
@@ -18,12 +18,30 @@ const visibilityOptions: { value: Visibility; label: string; desc: string; color
 
 export default function MessageComposer({ ticketId, canSendInternal }: Props) {
   const router = useRouter()
+  const draftKey = `hd_draft_${ticketId}`
   const [body, setBody] = useState('')
   const [isNote, setIsNote] = useState(false)
   const [visibility, setVisibility] = useState<Visibility>('PUBLIC')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(draftKey)
+      if (saved) setBody(saved)
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist draft to localStorage on change
+  useEffect(() => {
+    try {
+      if (body) localStorage.setItem(draftKey, body)
+      else localStorage.removeItem(draftKey)
+    } catch { /* ignore */ }
+  }, [body, draftKey])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,6 +55,7 @@ export default function MessageComposer({ ticketId, canSendInternal }: Props) {
       const data = await res.json()
       if (data.ok) {
         setBody('')
+        try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
         router.refresh()
         textareaRef.current?.focus()
       } else {

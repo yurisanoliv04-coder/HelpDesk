@@ -1,42 +1,23 @@
 import { prisma } from '@/lib/db/prisma'
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
+import { TabSaverLink } from '@/components/ui/TabSaverLink'
 import { Suspense } from 'react'
-import {
-  Laptop, Monitor, Printer, Keyboard, MousePointer,
-  Headphones, Battery, Network, Smartphone, Package,
-  Cpu, HardDrive, Server, Tablet, Camera, type LucideProps,
-} from 'lucide-react'
+import { Pencil } from 'lucide-react'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 import AssetQuickActions from '@/components/assets/AssetQuickActions'
+import AssetCheckButton from '@/components/assets/AssetCheckButton'
 import AssetsFilters from '@/components/assets/AssetsFilters'
 import AssetsDeptChart, { type DeptStat } from '@/components/assets/AssetsDeptChart'
+import { AssetSelectionProvider } from '@/components/assets/AssetSelectionProvider'
+import { AssetSelectCheckbox } from '@/components/assets/AssetSelectCheckbox'
+import { AssetSelectAll } from '@/components/assets/AssetSelectAll'
+import { PaginationBar } from '@/components/ui/PaginationBar'
 
-// Map DB icon name → Lucide component
-const iconMap: Record<string, React.ComponentType<LucideProps>> = {
-  laptop:          Laptop,
-  monitor:         Monitor,
-  printer:         Printer,
-  keyboard:        Keyboard,
-  'mouse-pointer': MousePointer,
-  headphones:      Headphones,
-  battery:         Battery,
-  network:         Network,
-  smartphone:      Smartphone,
-  package:         Package,
-  cpu:             Cpu,
-  'hard-drive':    HardDrive,
-  server:          Server,
-  tablet:          Tablet,
-  camera:          Camera,
-}
+const PAGE_SIZE = 50
 
-function CategoryIcon({ name }: { name: string | null }) {
-  if (!name) return <Package size={16} color="#3d5068" />
-  const Icon = iconMap[name]
-  if (Icon) return <Icon size={16} color="#3d5068" />
-  return <span style={{ fontSize: 15, lineHeight: 1 }}>{name}</span>
-}
 
 // ── Status config ──────────────────────────────────────────────────────────
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -54,18 +35,30 @@ const perfConfig: Record<string, { label: string; color: string; track: string }
 }
 
 // Grid columns — shared between header and rows
-const GRID = '44px minmax(200px,1fr) 100px 130px 160px 140px 110px 120px 32px'
+// checkbox | icon | name | tag | category | assigned | location | performance | status | action | edit | menu
+const GRID = '36px 44px minmax(180px,1fr) 100px 130px 150px 130px 110px 100px 90px 28px 28px'
 
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string }>
+  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string; page?: string }>
 }) {
   const session = await auth()
   const role = session?.user.role
   if (role === 'COLABORADOR' || role === 'AUXILIAR_TI') redirect('/dashboard')
 
   const sp = await searchParams
+
+  // Restaura o último filtro ativo quando o usuário chega sem nenhum parâmetro
+  if (!sp.status && !sp.performance && !sp.q && !sp.location && !sp.userId && !sp.categoryId) {
+    const cookieStore = await cookies()
+    const saved = cookieStore.get('hd_assets_filter')?.value
+    if (saved) redirect(`/assets?${decodeURIComponent(saved)}`)
+  }
+
+  const page = Math.max(1, parseInt(sp.page ?? '1', 10) || 1)
+  const skip = (page - 1) * PAGE_SIZE
+
   const where: Record<string, unknown> = {}
   if (sp.status)      where.status           = sp.status
   if (sp.performance) where.performanceLabel = sp.performance
@@ -78,6 +71,7 @@ export default async function AssetsPage({
 
   const [
     assets,
+    filteredTotal,
     counts,
     perfCounts,
     filteredUser,
@@ -85,16 +79,19 @@ export default async function AssetsPage({
     locationRows,
     assetCategories,
     deployedForChart,
+    departments,
   ] = await Promise.all([
     prisma.asset.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
-      take: 150,
+      take: PAGE_SIZE,
+      skip,
       include: {
         category:       true,
         assignedToUser: { select: { id: true, name: true } },
       },
     }),
+    prisma.asset.count({ where }),
     prisma.asset.groupBy({ by: ['status'],           _count: { _all: true } }),
     prisma.asset.groupBy({ by: ['performanceLabel'], _count: { _all: true } }),
     sp.userId
@@ -113,7 +110,14 @@ export default async function AssetsPage({
         assignedToUser:   { select: { department: { select: { id: true, name: true } } } },
       },
     }),
+    prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ])
+
+  const locationOptions = [
+    'Departamento de T.I',
+    'Estoque T.I',
+    ...departments.map(d => d.name),
+  ].filter((v, i, a) => a.indexOf(v) === i)
 
   // ── Count maps ─────────────────────────────────────────────────────────
   const countMap  = Object.fromEntries(counts.map(c => [c.status, c._count._all]))
@@ -122,6 +126,7 @@ export default async function AssetsPage({
     if (p.performanceLabel) perfMap[p.performanceLabel] = p._count._all
   }
   const totalCount = Object.values(countMap).reduce((a, b) => a + b, 0)
+  const totalPages = Math.ceil(filteredTotal / PAGE_SIZE)
 
   // ── Department chart data ───────────────────────────────────────────────
   const deptMap: Record<string, DeptStat> = {}
@@ -181,7 +186,7 @@ export default async function AssetsPage({
             Gestão de Patrimônio
           </h1>
           <p style={{ fontSize: 13, color: '#3d5068', marginTop: 6 }}>
-            {assets.length} {assets.length === 1 ? 'ativo encontrado' : 'ativos encontrados'}
+            {filteredTotal} {filteredTotal === 1 ? 'ativo encontrado' : 'ativos encontrados'}
             {activeFilterLabel ? (
               <span style={{ color: '#00d9b8' }}> · {activeFilterLabel}</span>
             ) : Object.keys(where).length > 0 ? (
@@ -212,10 +217,14 @@ export default async function AssetsPage({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {statCards.map(s => {
           const isActive = activeCardKey === s.key
+          // cookieValue = query string sem o "/assets?" prefixo; '' para "Todos"
+          const filterValue = s.href.includes('?') ? s.href.split('?')[1] : ''
           return (
-            <Link
+            <TabSaverLink
               key={s.key}
               href={s.href}
+              cookieKey="hd_assets_filter"
+              cookieValue={filterValue}
               style={{
                 background: isActive ? `rgba(${s.glowRgb},0.11)` : s.bg,
                 border: `1.5px solid ${isActive ? s.color : s.border}`,
@@ -257,7 +266,7 @@ export default async function AssetsPage({
                   {s.label.toUpperCase()}
                 </p>
               </div>
-            </Link>
+            </TabSaverLink>
           )
         })}
       </div>
@@ -266,10 +275,13 @@ export default async function AssetsPage({
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {statusFilters.map(f => {
           const isActive = activeStatusChip === f.key
+          const filterValue = f.href.includes('?') ? f.href.split('?')[1] : ''
           return (
-            <Link
+            <TabSaverLink
               key={f.href}
               href={f.href}
+              cookieKey="hd_assets_filter"
+              cookieValue={filterValue}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '5px 12px', borderRadius: 7,
@@ -289,7 +301,7 @@ export default async function AssetsPage({
               }}>
                 {f.count}
               </span>
-            </Link>
+            </TabSaverLink>
           )
         })}
       </div>
@@ -307,6 +319,11 @@ export default async function AssetsPage({
       <AssetsDeptChart data={deptChartData} />
 
       {/* ── Tabela ───────────────────────────────────────────────────────── */}
+      <AssetSelectionProvider
+        assetIds={assets.map(a => ({ id: a.id, tag: a.tag, status: a.status }))}
+        locationOptions={locationOptions}
+        technicians={activeUsers}
+      >
       <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
 
         {/* Cabeçalho da tabela */}
@@ -315,6 +332,10 @@ export default async function AssetsPage({
           padding: '0 20px', borderBottom: '1px solid rgba(255,255,255,0.07)',
           background: 'rgba(255,255,255,0.02)', alignItems: 'center', height: 38,
         }}>
+          {/* Select-all checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <AssetSelectAll allIds={assets.map(a => a.id)} />
+          </div>
           <div />
           <div style={thStyle}>NOME DO ATIVO</div>
           <div style={{ ...thStyle, textAlign: 'right' as const }}>Nº</div>
@@ -323,6 +344,8 @@ export default async function AssetsPage({
           <div style={thStyle}>LOCAL</div>
           <div style={thStyle}>PERFORMANCE</div>
           <div style={thStyle}>SITUAÇÃO</div>
+          <div style={thStyle}>AÇÃO</div>
+          <div />
           <div />
         </div>
 
@@ -353,6 +376,11 @@ export default async function AssetsPage({
               }}
             >
               <Link href={`/assets/${asset.id}`} aria-label={`Ver detalhes de ${asset.name}`} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
+
+              {/* Checkbox */}
+              <div style={{ position: 'relative', zIndex: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AssetSelectCheckbox assetId={asset.id} />
+              </div>
 
               {/* Category icon */}
               <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center' }}>
@@ -460,7 +488,38 @@ export default async function AssetsPage({
                 </span>
               </div>
 
-              {/* Quick actions */}
+              {/* Check-in / Check-out inline button */}
+              <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center' }}>
+                <AssetCheckButton
+                  assetId={asset.id}
+                  assetTag={asset.tag}
+                  assetStatus={asset.status}
+                  users={activeUsers}
+                  locationOptions={locationOptions}
+                />
+              </div>
+
+              {/* Edit button */}
+              <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <Link
+                  href={`/assets/${asset.id}/edit`}
+                  title="Editar ativo"
+                  style={{
+                    width: 24, height: 24, borderRadius: 6,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    color: '#3d5068',
+                    transition: 'all 0.12s',
+                    textDecoration: 'none',
+                  }}
+                  className="edit-btn"
+                >
+                  <Pencil size={11} />
+                </Link>
+              </div>
+
+              {/* Quick actions (⋮ menu — clone, delete) */}
               <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 <AssetQuickActions
                   assetId={asset.id} assetStatus={asset.status} assetName={asset.name}
@@ -471,12 +530,30 @@ export default async function AssetsPage({
           )
         })}
       </div>
+      </AssetSelectionProvider>
 
       {/* Footer */}
-      {assets.length > 0 && (
-        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', textAlign: 'center' }}>
-          Exibindo {assets.length} de {totalCount} ativos · clique em qualquer linha para ver detalhes
-        </p>
+      {filteredTotal > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048' }}>
+            Página {page} de {totalPages} · {filteredTotal} ativo{filteredTotal !== 1 ? 's' : ''} · clique na linha para ver detalhes
+          </p>
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            buildHref={p => {
+              const params = new URLSearchParams()
+              if (sp.status)      params.set('status', sp.status)
+              if (sp.performance) params.set('performance', sp.performance)
+              if (sp.q)           params.set('q', sp.q)
+              if (sp.location)    params.set('location', sp.location)
+              if (sp.userId)      params.set('userId', sp.userId)
+              if (sp.categoryId)  params.set('categoryId', sp.categoryId)
+              params.set('page', String(p))
+              return `/assets?${params.toString()}`
+            }}
+          />
+        </div>
       )}
     </div>
   )

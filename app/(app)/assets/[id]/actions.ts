@@ -7,6 +7,7 @@ import { AssetStatus, StorageType, CpuBrand } from '@prisma/client'
 import { promises as fs } from 'fs'
 import path from 'path'
 import { redirect } from 'next/navigation'
+import { scoreComputer, scoreFromCatalog } from '@/lib/scoring/computer'
 
 // ─── Auth helper ────────────────────────────────────────────────────────────
 async function requireEditor() {
@@ -82,6 +83,264 @@ export async function updateAsset(
 
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/assets')
+}
+
+/** Retorna true se a tag estiver disponível (excluindo o próprio ativo) */
+export async function checkTagUniqueForEdit(tag: string, excludeAssetId: string): Promise<boolean> {
+  if (!tag?.trim()) return true
+  const exists = await prisma.asset.findFirst({
+    where: { tag: tag.trim().toUpperCase(), NOT: { id: excludeAssetId } },
+    select: { id: true },
+  })
+  return !exists
+}
+
+// ─── Update asset (full form — from edit page) ───────────────────────────────
+export interface UpdateAssetInput {
+  tag: string
+  name: string
+  categoryId: string
+  status: AssetStatus
+  location?: string
+  serialNumber?: string
+  assignedToUserId?: string
+  notes?: string
+  // Hardware — catálogo (scoring)
+  cpuPartId?: string
+  ramPartId?: string
+  storagePartId?: string
+  // Hardware — campos legados (descrição)
+  ramGb?: number
+  storageType?: StorageType
+  storageGb?: number
+  cpuBrand?: CpuBrand
+  cpuModel?: string
+  cpuGeneration?: number
+  // Financial
+  acquisitionCost?: number
+  currentValue?: number
+  acquisitionDate?: string
+  warrantyUntil?: string
+  // Custom fields
+  customFieldValues?: Record<string, string>
+}
+
+export async function updateAssetFull(
+  assetId: string,
+  input: UpdateAssetInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const session = await requireEditor()
+
+    if (!input.tag?.trim()) return { ok: false, error: 'Tag é obrigatória' }
+    if (!input.name?.trim()) return { ok: false, error: 'Nome é obrigatório' }
+    if (!input.categoryId) return { ok: false, error: 'Categoria é obrigatória' }
+
+    // Check tag uniqueness (allow same asset to keep its tag)
+    const existing = await prisma.asset.findFirst({
+      where: { tag: input.tag.trim(), NOT: { id: assetId } },
+    })
+    if (existing) return { ok: false, error: `Tag "${input.tag}" já está em uso por outro ativo` }
+
+    // Fetch current state to detect changes (including relation names for readable audit log)
+    const current = await prisma.asset.findUnique({
+      where: { id: assetId },
+      select: {
+        assignedToUserId: true, status: true, location: true,
+        name: true, tag: true, serialNumber: true, categoryId: true,
+        ramGb: true, storageType: true, storageGb: true,
+        cpuBrand: true, cpuModel: true, cpuGeneration: true,
+        cpuPartId: true, ramPartId: true, storagePartId: true,
+        category:    { select: { name: true } },
+        cpuPart:     { select: { brand: true, model: true } },
+        ramPart:     { select: { brand: true, model: true } },
+        storagePart: { select: { brand: true, model: true } },
+      },
+    })
+    if (!current) return { ok: false, error: 'Ativo não encontrado' }
+
+    // Fetch new hardware parts (for scoring AND change-log display)
+    const [newCpuPart, newRamPart, newStoragePart] = await Promise.all([
+      input.cpuPartId    ? prisma.hardwarePart.findUnique({ where: { id: input.cpuPartId    }, select: { id: true, scorePoints: true, model: true, notes: true, brand: true } }) : null,
+      input.ramPartId    ? prisma.hardwarePart.findUnique({ where: { id: input.ramPartId    }, select: { id: true, scorePoints: true, model: true, notes: true, brand: true } }) : null,
+      input.storagePartId? prisma.hardwarePart.findUnique({ where: { id: input.storagePartId}, select: { id: true, scorePoints: true, model: true, notes: true, brand: true } }) : null,
+    ])
+
+    // Compute performance score — catálogo tem prioridade sobre heurística
+    let scored = null
+    if (input.cpuPartId || input.ramPartId || input.storagePartId) {
+      scored = scoreFromCatalog({ cpuPart: newCpuPart, ramPart: newRamPart, storagePart: newStoragePart, cpuGeneration: input.cpuGeneration ?? null })
+    } else {
+      scored = scoreComputer({
+        ramGb: input.ramGb ?? null,
+        storageType: input.storageType ?? null,
+        cpuModel: input.cpuModel ?? null,
+        cpuGeneration: input.cpuGeneration ?? null,
+      })
+    }
+
+    const newAssignee = input.assignedToUserId || null
+    const newStatus   = input.status as AssetStatus
+    const assigneeChanged = newAssignee !== current.assignedToUserId
+    const statusChanged   = newStatus !== current.status
+
+    // Detect which fields changed — changedFields used for movement type, changedLines for audit log
+    const changedFields: string[] = []
+    const changedLines: string[] = []
+
+    const STATUS_LABEL: Record<string, string> = { STOCK: 'Estoque', DEPLOYED: 'Implantado', MAINTENANCE: 'Manutenção', LOANED: 'Emprestado', DISCARDED: 'Descartado' }
+
+    function track(field: string, oldVal: string | number | null | undefined, newVal: string | number | null | undefined) {
+      const o = oldVal ?? '—'
+      const n = newVal ?? '—'
+      if (o !== n) { changedFields.push(field); changedLines.push(`${field}: ${o} → ${n}`) }
+    }
+
+    track('tag',          current.tag,                                 input.tag?.trim())
+    track('nome',         current.name,                                input.name?.trim())
+    track('nº série',     current.serialNumber,                        input.serialNumber?.trim() || null)
+    track('localização',  current.location,                            input.location?.trim() || null)
+
+    if (input.categoryId !== current.categoryId) {
+      const newCat = await prisma.assetCategory.findUnique({ where: { id: input.categoryId }, select: { name: true } })
+      changedFields.push('categoria')
+      changedLines.push(`categoria: ${current.category?.name ?? '—'} → ${newCat?.name ?? input.categoryId}`)
+    }
+
+    if (newStatus !== current.status)
+      changedLines.push(`situação: ${STATUS_LABEL[current.status] ?? current.status} → ${STATUS_LABEL[newStatus] ?? newStatus}`)
+
+    // Hardware — catálogo
+    if ((input.cpuPartId ?? null) !== current.cpuPartId) {
+      const o = current.cpuPart ? `${current.cpuPart.brand} ${current.cpuPart.model}` : '—'
+      const n = newCpuPart       ? `${newCpuPart.brand} ${newCpuPart.model}`           : '—'
+      changedFields.push('CPU'); changedLines.push(`CPU: ${o} → ${n}`)
+    }
+    if ((input.ramPartId ?? null) !== current.ramPartId) {
+      const o = current.ramPart ? `${current.ramPart.brand} ${current.ramPart.model}` : '—'
+      const n = newRamPart       ? `${newRamPart.brand} ${newRamPart.model}`           : '—'
+      changedFields.push('RAM'); changedLines.push(`RAM: ${o} → ${n}`)
+    }
+    if ((input.storagePartId ?? null) !== current.storagePartId) {
+      const o = current.storagePart ? `${current.storagePart.brand} ${current.storagePart.model}` : '—'
+      const n = newStoragePart       ? `${newStoragePart.brand} ${newStoragePart.model}`           : '—'
+      changedFields.push('armazenamento'); changedLines.push(`armazenamento: ${o} → ${n}`)
+    }
+
+    // Hardware — legado
+    track('modelo CPU',    current.cpuModel,      input.cpuModel?.trim() || null)
+    track('geração CPU',   current.cpuGeneration, input.cpuGeneration ?? null)
+    track('RAM (GB)',      current.ramGb,          input.ramGb ?? null)
+    track('disco (GB)',    current.storageGb,      input.storageGb ?? null)
+
+    // Determine movement type
+    let movementType: 'CHECK_OUT' | 'CHECK_IN' | 'TRANSFER' | 'MAINT_START' | 'MAINT_END' | 'DISCARD' | 'UPDATE' | null = null
+    if (assigneeChanged || statusChanged) {
+      if (newStatus === 'MAINTENANCE' && current.status !== 'MAINTENANCE') movementType = 'MAINT_START'
+      else if (current.status === 'MAINTENANCE' && newStatus !== 'MAINTENANCE') movementType = 'MAINT_END'
+      else if (newStatus === 'DISCARDED') movementType = 'DISCARD'
+      else if (newAssignee && !current.assignedToUserId) movementType = 'CHECK_OUT'
+      else if (!newAssignee && current.assignedToUserId) movementType = 'CHECK_IN'
+      else if (newAssignee && current.assignedToUserId && newAssignee !== current.assignedToUserId) movementType = 'TRANSFER'
+      else movementType = 'UPDATE'
+    } else if (changedFields.length > 0) {
+      movementType = 'UPDATE'
+    }
+
+    const assetData = {
+      tag: input.tag.trim(),
+      name: input.name.trim(),
+      categoryId: input.categoryId,
+      status: newStatus,
+      location: input.location?.trim() || null,
+      serialNumber: input.serialNumber?.trim() || null,
+      assignedToUserId: newAssignee,
+      notes: input.notes?.trim() || null,
+      // Hardware — catálogo
+      cpuPartId: input.cpuPartId ?? null,
+      ramPartId: input.ramPartId ?? null,
+      storagePartId: input.storagePartId ?? null,
+      // Hardware — legado (descrição)
+      ramGb: input.ramGb ?? null,
+      storageType: input.storageType ?? null,
+      storageGb: input.storageGb ?? null,
+      cpuBrand: input.cpuBrand ?? null,
+      cpuModel: input.cpuModel?.trim() || null,
+      cpuGeneration: input.cpuGeneration ?? null,
+      // Financial
+      acquisitionCost: input.acquisitionCost ?? null,
+      currentValue: input.currentValue ?? null,
+      acquisitionDate: input.acquisitionDate ? new Date(input.acquisitionDate) : null,
+      warrantyUntil: input.warrantyUntil ? new Date(input.warrantyUntil) : null,
+      // Performance
+      performanceScore: scored?.score ?? null,
+      performanceLabel: scored?.label ?? null,
+      performanceNotes: scored ? scored.notes.join('\n') : null,
+    }
+
+    await prisma.asset.update({ where: { id: assetId }, data: assetData })
+
+    // Handle custom field values
+    if (input.customFieldValues) {
+      const entries = Object.entries(input.customFieldValues).filter(([, v]) => v !== '')
+
+      // Validate uniqueness constraints before upserting (exclude current asset)
+      for (const [fieldDefId, value] of entries) {
+        const fieldDef = await prisma.assetCustomFieldDef.findUnique({ where: { id: fieldDefId }, select: { isUnique: true, label: true } })
+        if (fieldDef?.isUnique) {
+          const clash = await prisma.assetCustomFieldValue.findFirst({ where: { fieldDefId, value, assetId: { not: assetId } } })
+          if (clash) return { ok: false, error: `O campo "${fieldDef.label}" exige um valor único. O valor "${value}" já está em uso.` }
+        }
+      }
+
+      for (const [fieldDefId, value] of entries) {
+        await prisma.assetCustomFieldValue.upsert({
+          where: { assetId_fieldDefId: { assetId, fieldDefId } },
+          update: { value },
+          create: { assetId, fieldDefId, value },
+        })
+      }
+      const emptyKeys = Object.entries(input.customFieldValues)
+        .filter(([, v]) => v === '')
+        .map(([k]) => k)
+      if (emptyKeys.length > 0) {
+        await prisma.assetCustomFieldValue.deleteMany({
+          where: { assetId, fieldDefId: { in: emptyKeys } },
+        })
+      }
+    }
+
+    if (movementType) {
+      const movNotes = changedLines.length > 0 ? changedLines.join('\n') : undefined
+      try {
+        await prisma.assetMovement.create({
+          data: {
+            assetId,
+            actorId: session.user.id,
+            type: movementType,
+            fromUserId: current.assignedToUserId ?? undefined,
+            toUserId: newAssignee ?? undefined,
+            fromStatus: current.status,
+            toStatus: newStatus,
+            toLocation: input.location?.trim() || undefined,
+            notes: movNotes,
+          },
+        })
+      } catch {
+        // Movement logging may fail if the server was started before the UPDATE
+        // migration was applied. The asset update itself succeeded. Restart the
+        // dev server once to reload the Prisma client and restore movement logging.
+      }
+    }
+
+    revalidatePath(`/assets/${assetId}`)
+    revalidatePath('/assets')
+    revalidatePath('/movements')
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Erro desconhecido'
+    return { ok: false, error: msg }
+  }
 }
 
 // ─── Notes ───────────────────────────────────────────────────────────────────
@@ -161,19 +420,25 @@ export async function deleteAssetFile(assetId: string, fileId: string) {
 }
 
 // ─── Check-in (return to stock) ──────────────────────────────────────────────
-export async function checkInAsset(assetId: string) {
+export async function checkInAsset(assetId: string, location?: string, notes?: string) {
   const session = await requireEditor()
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },
-    select: { id: true, status: true, assignedToUserId: true },
+    select: { id: true, status: true, assignedToUserId: true, location: true },
   })
   if (!asset) throw new Error('Ativo não encontrado')
+
+  const toLocation = location?.trim() || asset.location || null
 
   await prisma.$transaction([
     prisma.asset.update({
       where: { id: assetId },
-      data: { status: 'STOCK', assignedToUserId: null },
+      data: {
+        status: 'STOCK',
+        assignedToUserId: null,
+        ...(toLocation !== undefined && { location: toLocation }),
+      },
     }),
     prisma.assetMovement.create({
       data: {
@@ -183,28 +448,37 @@ export async function checkInAsset(assetId: string) {
         fromUserId: asset.assignedToUserId ?? undefined,
         fromStatus: asset.status,
         toStatus: 'STOCK',
+        toLocation: toLocation ?? undefined,
+        notes: notes?.trim() || undefined,
       },
     }),
   ])
 
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/assets')
+  revalidatePath('/movements')
 }
 
 // ─── Check-out (allocate to user) ─────────────────────────────────────────────
-export async function checkOutAsset(assetId: string, toUserId: string) {
+export async function checkOutAsset(assetId: string, toUserId: string, location?: string, notes?: string) {
   const session = await requireEditor()
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },
-    select: { id: true, status: true, assignedToUserId: true },
+    select: { id: true, status: true, assignedToUserId: true, location: true },
   })
   if (!asset) throw new Error('Ativo não encontrado')
+
+  const toLocation = location?.trim() || null
 
   await prisma.$transaction([
     prisma.asset.update({
       where: { id: assetId },
-      data: { status: 'DEPLOYED', assignedToUserId: toUserId },
+      data: {
+        status: 'DEPLOYED',
+        assignedToUserId: toUserId,
+        ...(toLocation !== null && { location: toLocation }),
+      },
     }),
     prisma.assetMovement.create({
       data: {
@@ -215,12 +489,15 @@ export async function checkOutAsset(assetId: string, toUserId: string) {
         toUserId,
         fromStatus: asset.status,
         toStatus: 'DEPLOYED',
+        toLocation: toLocation ?? undefined,
+        notes: notes?.trim() || undefined,
       },
     }),
   ])
 
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/assets')
+  revalidatePath('/movements')
 }
 
 // ─── Clone asset ──────────────────────────────────────────────────────────────

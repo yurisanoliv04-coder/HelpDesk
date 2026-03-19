@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth/config'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { AssetStatus, StorageType, CpuBrand } from '@prisma/client'
-import { scoreComputer } from '@/lib/scoring/computer'
+import { scoreComputer, scoreFromCatalog } from '@/lib/scoring/computer'
 
 async function requireEditor() {
   const session = await auth()
@@ -35,6 +35,16 @@ export async function getNextTag(): Promise<string> {
   return nextTag()
 }
 
+/** Retorna true se a tag estiver disponível (não existe em nenhum ativo) */
+export async function checkTagUnique(tag: string): Promise<boolean> {
+  if (!tag?.trim()) return true
+  const exists = await prisma.asset.findFirst({
+    where: { tag: tag.trim().toUpperCase() },
+    select: { id: true },
+  })
+  return !exists
+}
+
 export interface CreateAssetInput {
   tag: string
   name: string
@@ -44,7 +54,11 @@ export interface CreateAssetInput {
   serialNumber?: string
   assignedToUserId?: string
   notes?: string
-  // Hardware
+  // Hardware — catálogo (scoring)
+  cpuPartId?: string
+  ramPartId?: string
+  storagePartId?: string
+  // Hardware — legado (descrição)
   ramGb?: number
   storageType?: StorageType
   storageGb?: number
@@ -56,6 +70,8 @@ export interface CreateAssetInput {
   currentValue?: number
   acquisitionDate?: string
   warrantyUntil?: string
+  // Custom fields
+  customFieldValues?: Record<string, string>
 }
 
 export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
@@ -71,14 +87,23 @@ export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; 
     const existing = await prisma.asset.findUnique({ where: { tag: input.tag.trim() } })
     if (existing) return { ok: false, error: `Tag "${input.tag}" já está em uso` }
 
-    // Compute performance score
-    const scored = scoreComputer({
-      ramGb: input.ramGb ?? null,
-      storageType: input.storageType ?? null,
-      cpuBrand: input.cpuBrand ?? null,
-      cpuModel: input.cpuModel ?? null,
-      cpuGeneration: input.cpuGeneration ?? null,
-    })
+    // Compute performance score — catálogo tem prioridade
+    let scored = null
+    if (input.cpuPartId || input.ramPartId || input.storagePartId) {
+      const [cpuPart, ramPart, storagePart] = await Promise.all([
+        input.cpuPartId ? prisma.hardwarePart.findUnique({ where: { id: input.cpuPartId }, select: { id: true, scorePoints: true, model: true, notes: true } }) : null,
+        input.ramPartId ? prisma.hardwarePart.findUnique({ where: { id: input.ramPartId }, select: { id: true, scorePoints: true, model: true, notes: true } }) : null,
+        input.storagePartId ? prisma.hardwarePart.findUnique({ where: { id: input.storagePartId }, select: { id: true, scorePoints: true, model: true, notes: true } }) : null,
+      ])
+      scored = scoreFromCatalog({ cpuPart, ramPart, storagePart, cpuGeneration: input.cpuGeneration ?? null })
+    } else {
+      scored = scoreComputer({
+        ramGb: input.ramGb ?? null,
+        storageType: input.storageType ?? null,
+        cpuModel: input.cpuModel ?? null,
+        cpuGeneration: input.cpuGeneration ?? null,
+      })
+    }
 
     const asset = await prisma.asset.create({
       data: {
@@ -90,7 +115,11 @@ export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; 
         serialNumber: input.serialNumber?.trim() || null,
         assignedToUserId: input.assignedToUserId || null,
         notes: input.notes?.trim() || null,
-        // Hardware
+        // Hardware — catálogo
+        cpuPartId: input.cpuPartId ?? null,
+        ramPartId: input.ramPartId ?? null,
+        storagePartId: input.storagePartId ?? null,
+        // Hardware — legado
         ramGb: input.ramGb ?? null,
         storageType: input.storageType ?? null,
         storageGb: input.storageGb ?? null,
@@ -108,6 +137,26 @@ export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; 
         performanceNotes: scored ? scored.notes.join('\n') : null,
       },
     })
+
+    // Handle custom field values
+    if (input.customFieldValues) {
+      const entries = Object.entries(input.customFieldValues).filter(([, v]) => v !== '')
+
+      // Validate uniqueness constraints before inserting
+      for (const [fieldDefId, value] of entries) {
+        const fieldDef = await prisma.assetCustomFieldDef.findUnique({ where: { id: fieldDefId }, select: { isUnique: true, label: true } })
+        if (fieldDef?.isUnique) {
+          const clash = await prisma.assetCustomFieldValue.findFirst({ where: { fieldDefId, value } })
+          if (clash) return { ok: false, error: `O campo "${fieldDef.label}" exige um valor único. O valor "${value}" já está em uso.` }
+        }
+      }
+
+      for (const [fieldDefId, value] of entries) {
+        await prisma.assetCustomFieldValue.create({
+          data: { assetId: asset.id, fieldDefId, value },
+        })
+      }
+    }
 
     revalidatePath('/assets')
     return { ok: true, id: asset.id }
