@@ -1,153 +1,222 @@
 import { prisma } from '@/lib/db/prisma'
-import { auth } from '@/lib/auth/config'
-import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
-import { TabSaverLink } from '@/components/ui/TabSaverLink'
-import UsersTab from '@/components/settings/UsersTab'
-import DepartmentsTab from '@/components/settings/DepartmentsTab'
-import CategoriesTab from '@/components/settings/CategoriesTab'
-import ScoringTab from '@/components/settings/ScoringTab'
-import TicketSettingsTab from '@/components/settings/TicketSettingsTab'
-import HardwarePartsTab from '@/components/settings/HardwarePartsTab'
-import {
-  getComputerScoringConfig,
-  getAssetLocations,
-  getAssetCustomFieldDefs,
-  getAssetModels,
-  getHardwareParts,
-  getCpuGenerationConfigs,
-} from './actions'
+import Link from 'next/link'
+import GearAnimation from '@/components/settings/GearAnimation'
 
-const TABS = [
-  { key: 'usuarios',      label: 'Usuários',          icon: '👥' },
-  { key: 'departamentos', label: 'Departamentos',      icon: '🏢' },
-  { key: 'chamados',      label: 'Config. Chamados',   icon: '🎫' },
-  { key: 'scoring',       label: 'Pontuação',          icon: '📊' },
-  { key: 'categorias',    label: 'Categorias',         icon: '🏷️' },
-  { key: 'hardware',      label: 'Hardware',           icon: '🔲' },
-] as const
-type TabKey = typeof TABS[number]['key']
-
-export default async function SettingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ tab?: string }>
-}) {
-  const session = await auth()
-  if (session?.user.role !== 'ADMIN') redirect('/dashboard')
-
-  const { tab: rawTab } = await searchParams
-
-  // Redireciona para a última aba usada (salva em cookie) quando não há parâmetro na URL
-  if (!rawTab) {
-    const cookieStore = await cookies()
-    const saved = cookieStore.get('hd_settings_tab')?.value
-    if (saved && TABS.some(t => t.key === saved)) {
-      redirect(`/settings?tab=${saved}`)
-    }
-  }
-
-  const activeTab: TabKey = TABS.some(t => t.key === rawTab) ? (rawTab as TabKey) : 'usuarios'
-
-  // Load data for active tab
-  const [
-    users, departments, ticketCategories, assetCategories, slaPolices,
-    chamadosCategories, chamadosDepartments,
-    totalAssets, scoringConfig, scoringRules,
-    assetLocations, assetCustomFieldDefs, assetModels, categoriaDepartments,
-    hardwareParts, cpuGenConfigs,
-  ] = await Promise.all([
-    activeTab === 'usuarios' ? prisma.user.findMany({
-      orderBy: [{ active: 'desc' }, { name: 'asc' }],
-      select: {
-        id: true, name: true, email: true, role: true, active: true,
-        department: { select: { id: true, name: true } },
-      },
-    }) : Promise.resolve([]),
-
-    (activeTab === 'usuarios' || activeTab === 'departamentos') ? prisma.department.findMany({
-      orderBy: { name: 'asc' },
-      include: { _count: { select: { users: true } } },
-    }) : Promise.resolve([]),
-
-    activeTab === 'categorias' ? prisma.ticketCategory.findMany({
-      where: { parentId: null }, // only root categories
-      orderBy: { name: 'asc' },
-      include: {
-        _count: { select: { tickets: true } },
-        children: {
-          orderBy: { name: 'asc' },
-          include: { _count: { select: { tickets: true } } },
-        },
-      },
-    }) : Promise.resolve([]),
-
-    activeTab === 'categorias' ? prisma.assetCategory.findMany({
-      orderBy: { name: 'asc' },
-      include: { _count: { select: { assets: true } } },
-    }) : Promise.resolve([]),
-
-    activeTab === 'chamados' ? prisma.slaPolicy.findMany({
-      orderBy: { name: 'asc' },
-      select: {
-        id: true, name: true, active: true,
-        priority: true, responseMinutes: true, resolutionMinutes: true,
-        category: { select: { name: true } },
-      },
-    }) : Promise.resolve([]),
-
-    // Categories with scoring points for chamados tab
-    activeTab === 'chamados' ? prisma.ticketCategory.findMany({
-      where: { parentId: null },
-      orderBy: { name: 'asc' },
-      select: {
-        id: true, name: true, description: true, active: true, scoringPoints: true,
-        children: {
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, description: true, active: true, scoringPoints: true },
-        },
-      },
-    }) : Promise.resolve([]),
-
-    // Departments with scoring points for chamados tab
-    activeTab === 'chamados' ? prisma.department.findMany({
-      orderBy: { name: 'asc' },
-      select: {
-        id: true, name: true, code: true, active: true, scoringPoints: true,
-        _count: { select: { users: true } },
-      },
-    }) : Promise.resolve([]),
-
-    (activeTab === 'scoring' || activeTab === 'categorias') ? prisma.asset.count() : Promise.resolve(0),
-
-    (activeTab === 'scoring' || activeTab === 'categorias') ? getComputerScoringConfig() : Promise.resolve(null),
-
-    activeTab === 'chamados' ? prisma.ticketScoringRule.findMany({
-      orderBy: [{ criterion: 'asc' }, { points: 'desc' }],
-    }) : Promise.resolve([]),
-
-    activeTab === 'categorias' ? getAssetLocations() : Promise.resolve([]),
-    activeTab === 'categorias' ? getAssetCustomFieldDefs() : Promise.resolve([]),
-    activeTab === 'categorias' ? getAssetModels() : Promise.resolve([]),
-
-    // Departments for asset locations display
-    activeTab === 'categorias' ? prisma.department.findMany({
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true },
-    }) : Promise.resolve([]),
-
-    // Hardware parts
-    activeTab === 'hardware' ? getHardwareParts() : Promise.resolve([]),
-    // CPU generation configs
-    activeTab === 'hardware' ? getCpuGenerationConfigs() : Promise.resolve([]),
+// Count helpers
+async function getCounts() {
+  const [users, departments, ticketCategories, assetCategories, hardwareParts] = await Promise.all([
+    prisma.user.count({ where: { active: true } }),
+    prisma.department.count({ where: { active: true } }),
+    prisma.ticketCategory.count({ where: { parentId: null } }),
+    prisma.assetCategory.count(),
+    prisma.hardwarePart.count(),
   ])
+  const [equipment, accessories, disposables] = await Promise.all([
+    prisma.assetCategory.count({ where: { kind: 'EQUIPMENT' } }),
+    prisma.assetCategory.count({ where: { kind: 'ACCESSORY' } }),
+    prisma.assetCategory.count({ where: { kind: 'DISPOSABLE' } }),
+  ])
+  return { users, departments, ticketCategories, assetCategories, hardwareParts, equipment, accessories, disposables }
+}
 
-  const deptsForUsers = activeTab === 'usuarios'
-    ? (departments as Array<{ id: string; name: string }>)
-    : []
+interface CardDef {
+  href: string
+  icon: React.ReactNode
+  title: string
+  description: string
+  count?: number
+  accent: string
+  subItems?: string[]
+}
+
+function SettingsCard({ href, icon, title, description, count, accent, subItems }: CardDef) {
+  return (
+    <Link
+      href={href}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 16,
+        padding: '28px 26px',
+        background: '#0d1422',
+        border: `1px solid rgba(255,255,255,0.07)`,
+        borderRadius: 14,
+        textDecoration: 'none',
+        transition: 'border-color 0.15s, background 0.15s',
+        position: 'relative', overflow: 'hidden',
+      }}
+      className="settings-card"
+    >
+      {/* Accent top line */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: accent, borderRadius: '14px 14px 0 0', opacity: 0.6 }} />
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 11, flexShrink: 0,
+          background: `${accent}14`, border: `1px solid ${accent}28`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {icon}
+        </div>
+        {count !== undefined && (
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
+            color: accent, background: `${accent}12`, border: `1px solid ${accent}28`,
+            borderRadius: 6, padding: '3px 9px', flexShrink: 0,
+          }}>{count}</span>
+        )}
+      </div>
+
+      <div>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#c8d6e5', marginBottom: 5 }}>{title}</p>
+        <p style={{ fontSize: 12, color: '#3d5068', lineHeight: 1.5 }}>{description}</p>
+      </div>
+
+      {/* Sub-item chips */}
+      {subItems && subItems.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: -4 }}>
+          {subItems.map(item => (
+            <span key={item} style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 600,
+              color: `${accent}cc`, background: `${accent}0a`, border: `1px solid ${accent}1a`,
+              borderRadius: 4, padding: '2px 7px', letterSpacing: '0.04em',
+            }}>{item}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Arrow */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'auto' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ color: accent, opacity: 0.6 }}>
+          <path d="M6 3L11 8L6 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </Link>
+  )
+}
+
+export default async function SettingsPage() {
+  const counts = await getCounts()
+
+  const cards: CardDef[] = [
+    {
+      href: '/settings/usuarios',
+      accent: '#38bdf8',
+      title: 'Usuários',
+      description: 'Cadastro, permissões e departamentos dos colaboradores.',
+      count: counts.users,
+      subItems: ['Cadastro', 'Permissões', 'Departamento'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/departamentos',
+      accent: '#818cf8',
+      title: 'Departamentos',
+      description: 'Estrutura de departamentos e pontuação por setor.',
+      count: counts.departments,
+      subItems: ['Estrutura', 'Pontuação'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/chamados',
+      accent: '#f59e0b',
+      title: 'Chamados',
+      description: 'Políticas de SLA, pontuação por categoria e prioridade.',
+      count: counts.ticketCategories,
+      subItems: ['Políticas SLA', 'Prioridade', 'Pontuação'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/categorias',
+      accent: '#34d399',
+      title: 'Categorias de Chamados',
+      description: 'Árvore de categorias e subcategorias para tickets.',
+      count: counts.ticketCategories,
+      subItems: ['Categorias', 'Subcategorias'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/patrimonio',
+      accent: '#38bdf8',
+      title: 'Patrimônio',
+      description: 'Categorias de equipamentos, locais, campos e modelos.',
+      count: counts.equipment,
+      subItems: ['Categorias', 'Locais', 'Campos', 'Modelos'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" />
+          <path d="M8 21h8m-4-4v4" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/acessorios',
+      accent: '#a78bfa',
+      title: 'Acessórios',
+      description: 'Categorias de periféricos: mouses, teclados, headsets, etc.',
+      count: counts.accessories,
+      subItems: ['Categorias', 'Estoque', 'Mínimo'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="6" y="4" width="12" height="16" rx="2" />
+          <path d="M10 8h4M10 12h4M10 16h4" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/descartaveis',
+      accent: '#fb923c',
+      title: 'Descartáveis',
+      description: 'Itens de uso único: fones descartáveis, cabos avulsos, etc.',
+      count: counts.disposables,
+      subItems: ['Categorias', 'Estoque', 'Mínimo'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fb923c" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 10H4l3-7h10l3 7h-5" />
+          <path d="M12 10v11" />
+          <path d="M9 10l3 3 3-3" />
+        </svg>
+      ),
+    },
+    {
+      href: '/settings/hardware',
+      accent: '#00d9b8',
+      title: 'Hardware',
+      description: 'Peças de computador e geração de CPU para pontuação automática.',
+      count: counts.hardwareParts,
+      subItems: ['Peças CPU', 'Gerações', 'Pontuação'],
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00d9b8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" />
+        </svg>
+      ),
+    },
+  ]
 
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 28 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
@@ -157,10 +226,13 @@ export default async function SettingsPage({
             <span style={{ color: '#1e3048', fontSize: 10 }}>/</span>
             <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#00d9b8', letterSpacing: '0.1em' }}>CONFIGURAÇÕES</span>
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#e2eaf4', letterSpacing: '-0.01em', lineHeight: 1 }}>
-            Configurações
-          </h1>
-          <p style={{ fontSize: 13, color: '#3d5068', marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <GearAnimation />
+            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#e2eaf4', letterSpacing: '-0.01em', lineHeight: 1 }}>
+              Configurações
+            </h1>
+          </div>
+          <p style={{ fontSize: 13, color: '#3d5068', marginTop: 8 }}>
             Gerenciamento do sistema — acesso restrito a administradores
           </p>
         </div>
@@ -170,93 +242,27 @@ export default async function SettingsPage({
           background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)',
           fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#f87171',
         }}>
-          🔒 Admin TI
+          Admin TI
         </span>
       </div>
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.07)', paddingBottom: 0 }}>
-        {TABS.map(t => {
-          const isActive = t.key === activeTab
-          return (
-            <TabSaverLink
-              key={t.key}
-              href={`/settings?tab=${t.key}`}
-              cookieKey="hd_settings_tab"
-              cookieValue={t.key}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '9px 16px', borderRadius: '8px 8px 0 0',
-                background: isActive ? '#0d1422' : 'transparent',
-                border: isActive ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
-                borderBottom: isActive ? '1px solid #0d1422' : '1px solid transparent',
-                marginBottom: isActive ? -1 : 0,
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 11, fontWeight: isActive ? 700 : 500,
-                color: isActive ? '#00d9b8' : '#3d5068',
-                textDecoration: 'none', transition: 'all 0.1s',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <span style={{ fontSize: 13 }}>{t.icon}</span>
-              {t.label}
-            </TabSaverLink>
-          )
-        })}
+      {/* Card grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 20,
+      }}>
+        {cards.map(card => (
+          <SettingsCard key={card.href} {...card} />
+        ))}
       </div>
 
-      {/* Tab content */}
-      <div>
-        {activeTab === 'usuarios' && (
-          <UsersTab
-            users={users as Parameters<typeof UsersTab>[0]['users']}
-            departments={deptsForUsers}
-            currentUserId={session!.user.id}
-          />
-        )}
-
-        {activeTab === 'departamentos' && (
-          <DepartmentsTab
-            departments={departments as Parameters<typeof DepartmentsTab>[0]['departments']}
-          />
-        )}
-
-        {activeTab === 'chamados' && (
-          <TicketSettingsTab
-            slaPolices={slaPolices as Parameters<typeof TicketSettingsTab>[0]['slaPolices']}
-            ticketCategories={chamadosCategories as Parameters<typeof TicketSettingsTab>[0]['ticketCategories']}
-            departments={chamadosDepartments as Parameters<typeof TicketSettingsTab>[0]['departments']}
-          />
-        )}
-
-        {activeTab === 'scoring' && scoringConfig && (
-          <ScoringTab
-            totalAssets={totalAssets as number}
-            initialConfig={scoringConfig}
-          />
-        )}
-
-        {activeTab === 'categorias' && scoringConfig && (
-          <CategoriesTab
-            ticketCategories={ticketCategories as Parameters<typeof CategoriesTab>[0]['ticketCategories']}
-            assetCategories={assetCategories as Parameters<typeof CategoriesTab>[0]['assetCategories']}
-            locations={assetLocations as string[]}
-            customFieldDefs={assetCustomFieldDefs as Parameters<typeof CategoriesTab>[0]['customFieldDefs']}
-            assetModels={assetModels as Parameters<typeof CategoriesTab>[0]['assetModels']}
-            departments={categoriaDepartments as Parameters<typeof CategoriesTab>[0]['departments']}
-            totalAssets={totalAssets as number}
-            scoringConfig={scoringConfig}
-          />
-        )}
-
-        {activeTab === 'hardware' && (
-          <HardwarePartsTab
-            initialParts={hardwareParts as Parameters<typeof HardwarePartsTab>[0]['initialParts']}
-            initialGenConfigs={cpuGenConfigs as Parameters<typeof HardwarePartsTab>[0]['initialGenConfigs']}
-          />
-        )}
-      </div>
-
+      <style>{`
+        .settings-card:hover {
+          border-color: rgba(255,255,255,0.14) !important;
+          background: #111b2a !important;
+        }
+      `}</style>
     </div>
   )
 }

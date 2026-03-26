@@ -2,21 +2,28 @@
 
 import { useState, useTransition, useEffect, useRef } from 'react'
 import { CategoryIcon } from '@/components/ui/CategoryIcon'
-import ScoringTab from './ScoringTab'
 import {
   createAssetCategory, toggleAssetCategoryActive, updateAssetCategory, deleteAssetCategory,
   createAssetLocation, deleteAssetLocation, updateAssetLocation,
   createAssetCustomFieldDef, updateAssetCustomFieldDef, deleteAssetCustomFieldDef,
   createAssetModel, updateAssetModel, deleteAssetModel,
 } from '@/app/(app)/settings/actions'
-import type { ComputerScoringConfig } from '@/lib/scoring/computer'
 import type { AssetCustomFieldDefData, AssetModelData } from '@/app/(app)/settings/actions'
+
+type AssetCategoryKind = 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE'
+
+const KIND_OPTIONS: { value: AssetCategoryKind; label: string; color: string }[] = [
+  { value: 'EQUIPMENT',  label: 'Equipamento', color: '#38bdf8' },
+  { value: 'ACCESSORY',  label: 'Acessório',   color: '#a78bfa' },
+  { value: 'DISPOSABLE', label: 'Descartável',  color: '#fb923c' },
+]
 
 interface AssetCategory {
   id: string
   name: string
   icon: string | null
   active: boolean
+  kind: AssetCategoryKind
   _count: { assets: number }
 }
 
@@ -27,7 +34,7 @@ interface Props {
   assetModels: AssetModelData[]
   departments: { id: string; name: string }[]
   totalAssets: number
-  scoringConfig: ComputerScoringConfig
+  lockedKind?: AssetCategoryKind
 }
 
 const iStyle: React.CSSProperties = {
@@ -164,8 +171,60 @@ function CheckboxToggle({ label, checked, onChange }: {
   )
 }
 
+// ── Alert Config Block ─────────────────────────────────────────────────────────
+function AlertConfigBlock({
+  trigger, onTrigger, days, onDays,
+}: {
+  trigger: string; onTrigger: (v: string) => void
+  days: string; onDays: (v: string) => void
+}) {
+  const TRIGGER_OPTIONS = [
+    { value: 'CHECK_IN',   label: '🟢 Check-in' },
+    { value: 'CHECK_OUT',  label: '🔴 Check-out' },
+    { value: 'MAINTENANCE', label: '🔧 Manutenção' },
+    { value: 'ANY',        label: '🔔 Qualquer movimentação' },
+  ]
+  return (
+    <div style={{
+      background: 'rgba(251,146,60,0.05)', border: '1px solid rgba(251,146,60,0.2)',
+      borderRadius: 8, padding: '12px 14px', marginTop: 2,
+    }}>
+      <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#fb923c', marginBottom: 10, letterSpacing: '0.1em' }}>
+        CONFIGURAÇÃO DO ALERTA
+      </p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '1 1 180px' }}>
+          <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>ACIONADO POR</label>
+          <select value={trigger} onChange={e => onTrigger(e.target.value)} style={iStyle}>
+            {TRIGGER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: '0 1 120px' }}>
+          <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>DIAS ATÉ ALERTA</label>
+          <input
+            type="number" min={0} max={3650}
+            value={days} onChange={e => onDays(e.target.value)}
+            placeholder="Ex: 14"
+            style={iStyle}
+          />
+        </div>
+        <p style={{ fontSize: 11, color: '#3d5068', flex: '1 1 200px', paddingBottom: 7, lineHeight: 1.4 }}>
+          O sistema alertará <strong style={{ color: '#fb923c' }}>{days || 0} dia(s)</strong> após {
+            trigger === 'CHECK_IN' ? 'um check-in'
+            : trigger === 'CHECK_OUT' ? 'um check-out'
+            : trigger === 'MAINTENANCE' ? 'manutenção'
+            : 'qualquer movimentação'
+          }.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Custom Fields Section ──────────────────────────────────────────────────────
-function CustomFieldsSection({
+export function CustomFieldsSection({
   assetCategories,
   customFieldDefs,
 }: {
@@ -177,23 +236,29 @@ function CustomFieldsSection({
   // Create form state
   const [createCatId, setCreateCatId] = useState(assetCategories[0]?.id ?? '')
   const [createLabel, setCreateLabel] = useState('')
-  const [createType, setCreateType] = useState<'text' | 'checkbox_group'>('text')
+  const [createType, setCreateType] = useState<'text' | 'checkbox_group' | 'alert'>('text')
   const [createOptions, setCreateOptions] = useState<string[]>([])
   const [createOptionInput, setCreateOptionInput] = useState('')
   const [createRequired, setCreateRequired] = useState(false)
   const [createIsUnique, setCreateIsUnique] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createSuccess, setCreateSuccess] = useState(false)
+  // Alert-specific create state
+  const [createAlertTrigger, setCreateAlertTrigger] = useState('CHECK_IN')
+  const [createAlertDays, setCreateAlertDays] = useState('0')
 
   // Edit state
   const [editId, setEditId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
-  const [editType, setEditType] = useState<'text' | 'checkbox_group'>('text')
+  const [editType, setEditType] = useState<'text' | 'checkbox_group' | 'alert'>('text')
   const [editOptions, setEditOptions] = useState<string[]>([])
   const [editOptionInput, setEditOptionInput] = useState('')
   const [editRequired, setEditRequired] = useState(false)
   const [editIsUnique, setEditIsUnique] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // Alert-specific edit state
+  const [editAlertTrigger, setEditAlertTrigger] = useState('CHECK_IN')
+  const [editAlertDays, setEditAlertDays] = useState('0')
 
   // Delete state
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -209,16 +274,24 @@ function CustomFieldsSection({
     setEditIsUnique(f.isUnique)
     setEditError(null)
     setDeleteId(null)
+    if (f.fieldType === 'alert') {
+      setEditAlertTrigger(f.options[0] ?? 'CHECK_IN')
+      setEditAlertDays(f.options[1] ?? '0')
+    }
   }
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setCreateError(null); setCreateSuccess(false)
+    const opts = createType === 'alert'
+      ? [createAlertTrigger, createAlertDays]
+      : createOptions
     startTransition(async () => {
-      const r = await createAssetCustomFieldDef(createCatId, createLabel, createType, createOptions, createRequired, createIsUnique)
+      const r = await createAssetCustomFieldDef(createCatId, createLabel, createType, opts, createRequired, createIsUnique)
       if (r.ok) {
         setCreateLabel(''); setCreateType('text'); setCreateOptions([]); setCreateOptionInput('')
         setCreateRequired(false); setCreateIsUnique(false)
+        setCreateAlertTrigger('CHECK_IN'); setCreateAlertDays('0')
         setCreateSuccess(true); setTimeout(() => setCreateSuccess(false), 3000)
       } else setCreateError(r.error ?? 'Erro')
     })
@@ -226,8 +299,11 @@ function CustomFieldsSection({
 
   function handleUpdate() {
     setEditError(null)
+    const opts = editType === 'alert'
+      ? [editAlertTrigger, editAlertDays]
+      : editOptions
     startTransition(async () => {
-      const r = await updateAssetCustomFieldDef(editId!, editLabel, editType, editOptions, editRequired, editIsUnique)
+      const r = await updateAssetCustomFieldDef(editId!, editLabel, editType, opts, editRequired, editIsUnique)
       if (r.ok) setEditId(null)
       else setEditError(r.error ?? 'Erro')
     })
@@ -276,15 +352,18 @@ function CustomFieldsSection({
             </div>
             <div style={{ flex: '0 1 160px', display: 'flex', flexDirection: 'column', gap: 5 }}>
               <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>TIPO</label>
-              <select value={createType} onChange={e => { setCreateType(e.target.value as 'text' | 'checkbox_group'); if (e.target.value !== 'text') setCreateIsUnique(false) }} style={iStyle}>
+              <select value={createType} onChange={e => { setCreateType(e.target.value as 'text' | 'checkbox_group' | 'alert'); if (e.target.value !== 'text') setCreateIsUnique(false) }} style={iStyle}>
                 <option value="text">Texto livre</option>
                 <option value="checkbox_group">Grupo de opções</option>
+                <option value="alert">🔔 Alerta programado</option>
               </select>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end', paddingBottom: 2 }}>
-              <CheckboxToggle label="Obrigatório" checked={createRequired} onChange={setCreateRequired} />
-              {createType === 'text' && <CheckboxToggle label="Único" checked={createIsUnique} onChange={setCreateIsUnique} />}
-            </div>
+            {createType !== 'alert' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end', paddingBottom: 2 }}>
+                <CheckboxToggle label="Obrigatório" checked={createRequired} onChange={setCreateRequired} />
+                {createType === 'text' && <CheckboxToggle label="Único" checked={createIsUnique} onChange={setCreateIsUnique} />}
+              </div>
+            )}
             <button type="submit" disabled={isPending || !createLabel.trim() || !createCatId} style={{
               padding: '9px 18px', borderRadius: 8, height: 38, flexShrink: 0,
               background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)',
@@ -341,6 +420,13 @@ function CustomFieldsSection({
               </div>
             </div>
           )}
+
+          {createType === 'alert' && (
+            <AlertConfigBlock
+              trigger={createAlertTrigger} onTrigger={setCreateAlertTrigger}
+              days={createAlertDays} onDays={setCreateAlertDays}
+            />
+          )}
         </form>
         {createError && <p style={{ fontSize: 12, color: '#f87171', marginTop: 8 }}>⚠ {createError}</p>}
         {createSuccess && <p style={{ fontSize: 12, color: '#34d399', marginTop: 8 }}>✓ Campo criado com sucesso</p>}
@@ -386,16 +472,19 @@ function CustomFieldsSection({
                     />
                     <select
                       value={editType}
-                      onChange={e => { setEditType(e.target.value as 'text' | 'checkbox_group'); if (e.target.value !== 'text') setEditIsUnique(false) }}
+                      onChange={e => { setEditType(e.target.value as 'text' | 'checkbox_group' | 'alert'); if (e.target.value !== 'text') setEditIsUnique(false) }}
                       style={{ ...iStyle, flex: '0 1 160px' }}
                     >
                       <option value="text">Texto livre</option>
                       <option value="checkbox_group">Grupo de opções</option>
+                      <option value="alert">🔔 Alerta programado</option>
                     </select>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <CheckboxToggle label="Obrigatório" checked={editRequired} onChange={setEditRequired} />
-                      {editType === 'text' && <CheckboxToggle label="Único" checked={editIsUnique} onChange={setEditIsUnique} />}
-                    </div>
+                    {editType !== 'alert' && (
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <CheckboxToggle label="Obrigatório" checked={editRequired} onChange={setEditRequired} />
+                        {editType === 'text' && <CheckboxToggle label="Único" checked={editIsUnique} onChange={setEditIsUnique} />}
+                      </div>
+                    )}
                     <button onClick={handleUpdate} disabled={isPending || !editLabel.trim()} style={{
                       padding: '7px 14px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
                       background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)',
@@ -407,6 +496,12 @@ function CustomFieldsSection({
                       color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0,
                     }}>✕</button>
                   </div>
+                  {editType === 'alert' && (
+                    <AlertConfigBlock
+                      trigger={editAlertTrigger} onTrigger={setEditAlertTrigger}
+                      days={editAlertDays} onDays={setEditAlertDays}
+                    />
+                  )}
                   {editType === 'checkbox_group' && (
                     <div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 7 }}>
@@ -478,21 +573,29 @@ function CustomFieldsSection({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5' }}>{f.label}</span>
-                      <span style={{
-                        fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
-                        color: f.fieldType === 'checkbox_group' ? '#a78bfa' : '#38bdf8',
-                        background: f.fieldType === 'checkbox_group' ? 'rgba(167,139,250,0.08)' : 'rgba(56,189,248,0.08)',
-                        border: `1px solid ${f.fieldType === 'checkbox_group' ? 'rgba(167,139,250,0.2)' : 'rgba(56,189,248,0.2)'}`,
-                        borderRadius: 4, padding: '2px 6px',
-                      }}>
-                        {f.fieldType === 'checkbox_group' ? 'GRUPO OPÇÕES' : 'TEXTO'}
-                      </span>
-                      {f.required && (
+                      {f.fieldType === 'alert' ? (
+                        <span style={{
+                          fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+                          color: '#fb923c', background: 'rgba(251,146,60,0.08)',
+                          border: '1px solid rgba(251,146,60,0.25)', borderRadius: 4, padding: '2px 6px',
+                        }}>🔔 ALERTA</span>
+                      ) : (
+                        <span style={{
+                          fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+                          color: f.fieldType === 'checkbox_group' ? '#a78bfa' : '#38bdf8',
+                          background: f.fieldType === 'checkbox_group' ? 'rgba(167,139,250,0.08)' : 'rgba(56,189,248,0.08)',
+                          border: `1px solid ${f.fieldType === 'checkbox_group' ? 'rgba(167,139,250,0.2)' : 'rgba(56,189,248,0.2)'}`,
+                          borderRadius: 4, padding: '2px 6px',
+                        }}>
+                          {f.fieldType === 'checkbox_group' ? 'GRUPO OPÇÕES' : 'TEXTO'}
+                        </span>
+                      )}
+                      {f.fieldType !== 'alert' && f.required && (
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#fb923c', background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.2)', borderRadius: 4, padding: '2px 6px' }}>
                           OBRIGATÓRIO
                         </span>
                       )}
-                      {f.isUnique && (
+                      {f.fieldType !== 'alert' && f.isUnique && (
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 4, padding: '2px 6px' }}>
                           ÚNICO
                         </span>
@@ -507,6 +610,30 @@ function CustomFieldsSection({
                             fontSize: 10, color: '#8b7fd4',
                           }}>{opt}</span>
                         ))}
+                      </div>
+                    )}
+                    {f.fieldType === 'alert' && (
+                      <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 8px', borderRadius: 4, fontSize: 10,
+                          background: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.18)',
+                          color: '#fb923c',
+                        }}>
+                          {f.options[0] === 'CHECK_IN' ? '🟢 Check-in'
+                            : f.options[0] === 'CHECK_OUT' ? '🔴 Check-out'
+                            : f.options[0] === 'MAINTENANCE' ? '🔧 Manutenção'
+                            : f.options[0] === 'ANY' ? '🔔 Qualquer mov.'
+                            : f.options[0] ?? '—'}
+                        </span>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 8px', borderRadius: 4, fontSize: 10,
+                          background: 'rgba(251,146,60,0.06)', border: '1px solid rgba(251,146,60,0.18)',
+                          color: '#fb923c',
+                        }}>
+                          ⏱ {f.options[1] ?? '0'} dia(s)
+                        </span>
                       </div>
                     )}
                   </div>
@@ -532,7 +659,7 @@ function CustomFieldsSection({
 }
 
 // ── Models Section ─────────────────────────────────────────────────────────────
-function ModelsSection({
+export function ModelsSection({
   assetCategories,
   assetModels,
 }: {
@@ -834,7 +961,7 @@ function ModelsSection({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function AssetsSettingsTab({
-  assetCategories, locations, customFieldDefs, assetModels, departments, totalAssets, scoringConfig,
+  assetCategories, locations, customFieldDefs, assetModels, departments, totalAssets, lockedKind,
 }: Props) {
   const [isPending, startTransition] = useTransition()
 
@@ -858,7 +985,7 @@ export default function AssetsSettingsTab({
   }
 
   function expandAll() {
-    const all = new Set(['categorias', 'locais', 'campos', 'modelos', 'scoring'])
+    const all = new Set(['categorias', 'locais', 'campos', 'modelos'])
     setOpenSections(all)
     try { localStorage.setItem(LS_KEY, JSON.stringify([...all])) } catch {}
   }
@@ -871,11 +998,13 @@ export default function AssetsSettingsTab({
   // ── Asset Categories state ──────────────────────────────────────────────────
   const [aName, setAName] = useState('')
   const [aIcon, setAIcon] = useState('')
+  const [aKind, setAKind] = useState<AssetCategoryKind>(lockedKind ?? 'EQUIPMENT')
   const [aError, setAError] = useState<string | null>(null)
   const [aSuccess, setASuccess] = useState(false)
   const [editCatId, setEditCatId] = useState<string | null>(null)
   const [editCatName, setEditCatName] = useState('')
   const [editCatIcon, setEditCatIcon] = useState('')
+  const [editCatKind, setEditCatKind] = useState<AssetCategoryKind>('EQUIPMENT')
   const [editCatError, setEditCatError] = useState<string | null>(null)
   const [deleteCatId, setDeleteCatId] = useState<string | null>(null)
   const [deleteCatError, setDeleteCatError] = useState<string | null>(null)
@@ -883,8 +1012,8 @@ export default function AssetsSettingsTab({
   function handleCreateCategory(e: React.FormEvent) {
     e.preventDefault(); setAError(null); setASuccess(false)
     startTransition(async () => {
-      const r = await createAssetCategory(aName, aIcon)
-      if (r.ok) { setAName(''); setAIcon(''); setASuccess(true); setTimeout(() => setASuccess(false), 3000) }
+      const r = await createAssetCategory(aName, aIcon, aKind)
+      if (r.ok) { setAName(''); setAIcon(''); setAKind(lockedKind ?? 'EQUIPMENT'); setASuccess(true); setTimeout(() => setASuccess(false), 3000) }
       else setAError(r.error ?? 'Erro')
     })
   }
@@ -892,7 +1021,7 @@ export default function AssetsSettingsTab({
   function handleUpdateCategory() {
     setEditCatError(null)
     startTransition(async () => {
-      const r = await updateAssetCategory(editCatId!, editCatName, editCatIcon)
+      const r = await updateAssetCategory(editCatId!, editCatName, editCatIcon, editCatKind)
       if (r.ok) setEditCatId(null)
       else setEditCatError(r.error ?? 'Erro')
     })
@@ -988,6 +1117,14 @@ export default function AssetsSettingsTab({
               {ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
             </select>
           </div>
+          {!lockedKind && (
+            <div style={{ flex: '1 1 140px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>TIPO</label>
+              <select value={aKind} onChange={e => setAKind(e.target.value as AssetCategoryKind)} style={iStyle}>
+                {KIND_OPTIONS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+              </select>
+            </div>
+          )}
           <button type="submit" disabled={isPending || !aName.trim()} style={{
             padding: '9px 22px', borderRadius: 8, height: 38, flexShrink: 0,
             background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)',
@@ -1052,6 +1189,13 @@ export default function AssetsSettingsTab({
                       <option value="">— nenhum —</option>
                       {ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
                     </select>
+                    <select
+                      value={editCatKind}
+                      onChange={e => setEditCatKind(e.target.value as AssetCategoryKind)}
+                      style={{ ...iStyle, flex: '0 0 130px' }}
+                    >
+                      {KIND_OPTIONS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                    </select>
                     <button onClick={handleUpdateCategory} disabled={isPending || !editCatName.trim()} style={{
                       padding: '6px 14px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
                       background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.3)',
@@ -1084,6 +1228,17 @@ export default function AssetsSettingsTab({
                         background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)',
                         borderRadius: 4, padding: '1px 6px',
                       }}>{c._count.assets} ativos</span>
+                      {(() => {
+                        const kc = KIND_OPTIONS.find(k => k.value === (c.kind ?? 'EQUIPMENT'))
+                        return kc ? (
+                          <span style={{
+                            fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+                            color: kc.color, background: `${kc.color}12`,
+                            border: `1px solid ${kc.color}30`,
+                            borderRadius: 4, padding: '1px 6px',
+                          }}>{kc.label}</span>
+                        ) : null
+                      })()}
                       <span style={{
                         fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
                         color: c.active ? '#34d399' : '#f87171',
@@ -1096,7 +1251,7 @@ export default function AssetsSettingsTab({
                   <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                     <SmallBtn
                       label="Editar" color="#38bdf8"
-                      onClick={() => { setEditCatId(c.id); setEditCatName(c.name); setEditCatIcon(c.icon ?? ''); setEditCatError(null) }}
+                      onClick={() => { setEditCatId(c.id); setEditCatName(c.name); setEditCatIcon(c.icon ?? ''); setEditCatKind(c.kind ?? 'EQUIPMENT'); setEditCatError(null) }}
                       disabled={isPending}
                     />
                     <SmallBtn
@@ -1292,17 +1447,6 @@ export default function AssetsSettingsTab({
           assetCategories={assetCategories}
           assetModels={assetModels}
         />
-      </SectionCard>
-
-      {/* ── Pontuação de Equipamentos ────────────────────────────────────────── */}
-      <SectionCard
-        sectionKey="scoring"
-        icon="📊" title="Pontuação de Equipamentos" color="#34d399"
-        description="Critérios e pesos para classificar a qualidade dos equipamentos"
-        open={openSections.has('scoring')}
-        onToggle={() => toggleSection('scoring')}
-      >
-        <ScoringTab totalAssets={totalAssets} initialConfig={scoringConfig} />
       </SectionCard>
 
     </div>

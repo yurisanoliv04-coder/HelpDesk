@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/middleware'
 import { prisma } from '@/lib/db/prisma'
 import { ok, err } from '@/lib/utils/api'
-import { broadcastEvent } from '@/app/api/realtime/route'
+import { broadcastEvent } from '@/lib/realtime/clients'
 
 // POST /api/tickets/[id]/collaborators  — add collaborator
 export const POST = withAuth(

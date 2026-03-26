@@ -21,46 +21,67 @@ model Department {
 }
 
 model User {
-  id                   String               @id @default(cuid())
-  name                 String
-  email                String               @unique
-  passwordHash         String               @map("password_hash")
-  role                 UserRole             @default(COLABORADOR)
-  active               Boolean              @default(true)
-  avatarUrl            String?              @map("avatar_url")
-  departmentId         String?              @map("department_id")
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
-  birthday             DateTime?
-  domainAccount        String?              @map("domain_account")
-  entryDate            DateTime?            @map("entry_date")
-  exitDate             DateTime?            @map("exit_date")
-  phone                String?
-  windowsUser          String?              @map("windows_user")
-  assetFilesUploaded   AssetFile[]          @relation("AssetFileUploader")
-  movementsActor       AssetMovement[]      @relation("MovementActor")
-  movementsFrom        AssetMovement[]      @relation("MovementFromUser")
-  movementsTo          AssetMovement[]      @relation("MovementToUser")
-  assetNotesAuthored   AssetNote[]          @relation("AssetNoteAuthor")
-  assignedAssets       Asset[]              @relation("AssetAssignedTo")
-  ordersInitiated      MovementOrder[]      @relation("OrderActor")
-  ticketCollaborations TicketCollaborator[]
-  ticketEvents         TicketEvent[]
-  ticketMessages       TicketMessage[]
-  ticketSolutions      TicketSolution[]
-  ticketsAsAssignee    Ticket[]             @relation("TicketAssignee")
-  ticketsAsOpener      Ticket[]             @relation("TicketOpenedBy")
-  ticketsAsRequester   Ticket[]             @relation("TicketRequester")
-  filesUploaded        UserFile[]           @relation("FileUploader")
-  files                UserFile[]           @relation("UserFiles")
-  notesAuthored        UserNote[]           @relation("NoteAuthor")
-  notes                UserNote[]           @relation("UserNotes")
-  systemAccesses       UserSystemAccess[]
-  eventsAsTarget       UserEvent[]          @relation("UserEventTarget")
-  eventsAsActor        UserEvent[]          @relation("UserEventActor")
-  department           Department?          @relation(fields: [departmentId], references: [id])
+  id                     String                  @id @default(cuid())
+  name                   String
+  email                  String                  @unique
+  passwordHash           String                  @map("password_hash")
+  role                   UserRole                @default(COLABORADOR)
+  active                 Boolean                 @default(true)
+  avatarUrl              String?                 @map("avatar_url")
+  departmentId           String?                 @map("department_id")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
+  birthday               DateTime?
+  domainAccount          String?                 @map("domain_account")
+  entryDate              DateTime?               @map("entry_date")
+  exitDate               DateTime?               @map("exit_date")
+  phone                  String?
+  windowsUser            String?                 @map("windows_user")
+  assetFilesUploaded     AssetFile[]             @relation("AssetFileUploader")
+  movementsActor         AssetMovement[]         @relation("MovementActor")
+  movementsFrom          AssetMovement[]         @relation("MovementFromUser")
+  movementsTo            AssetMovement[]         @relation("MovementToUser")
+  assetNotesAuthored     AssetNote[]             @relation("AssetNoteAuthor")
+  assignedAssets         Asset[]                 @relation("AssetAssignedTo")
+  categoryStockMovements CategoryStockMovement[] @relation("CategoryStockMovements")
+  ordersInitiated        MovementOrder[]         @relation("OrderActor")
+  ticketCollaborations   TicketCollaborator[]
+  ticketEvents           TicketEvent[]
+  ticketMessages         TicketMessage[]
+  ticketSolutions        TicketSolution[]
+  ticketsAsAssignee      Ticket[]                @relation("TicketAssignee")
+  ticketsAsOpener        Ticket[]                @relation("TicketOpenedBy")
+  ticketsAsRequester     Ticket[]                @relation("TicketRequester")
+  eventsAsActor          UserEvent[]             @relation("UserEventActor")
+  eventsAsTarget         UserEvent[]             @relation("UserEventTarget")
+  filesUploaded          UserFile[]              @relation("FileUploader")
+  files                  UserFile[]              @relation("UserFiles")
+  notesAuthored          UserNote[]              @relation("NoteAuthor")
+  notes                  UserNote[]              @relation("UserNotes")
+  systemAccesses         UserSystemAccess[]
+  purchasesCreated       Purchase[]              @relation("PurchasesCreated")
+  purchasesBought        Purchase[]              @relation("PurchasesBuyer")
+  purchasesOrdered       Purchase[]              @relation("PurchasesOrdered")
+  department             Department?             @relation(fields: [departmentId], references: [id])
+  dashboards             UserDashboard[]
 
   @@map("users")
+}
+
+model UserDashboard {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String   @default("Dashboard")
+  isDefault Boolean  @default(false) @map("is_default")
+  layout    Json     // WidgetInstance[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@map("user_dashboards")
 }
 
 model UserNote {
@@ -265,36 +286,72 @@ model TicketEvent {
 }
 
 model AssetCategory {
-  id           String                @id @default(cuid())
-  name         String                @unique
-  icon         String?
-  active       Boolean               @default(true)
-  isComputer   Boolean               @default(false) @map("is_computer")
-  createdAt    DateTime              @default(now()) @map("created_at")
-  updatedAt    DateTime              @updatedAt @map("updated_at")
-  customFields AssetCustomFieldDef[]
-  models       AssetModel[]
-  assets       Asset[]
+  id             String                  @id @default(cuid())
+  name           String                  @unique
+  icon           String?
+  active         Boolean                 @default(true)
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  isComputer     Boolean                 @default(false) @map("is_computer")
+  kind           AssetCategoryKind       @default(EQUIPMENT)
+  stockQuantity  Int                     @default(0) @map("stock_quantity")
+  stockMinQty    Int                     @default(0) @map("stock_min_qty")
+  customFields   AssetCustomFieldDef[]
+  models         AssetModel[]
+  assets         Asset[]
+  stockMovements CategoryStockMovement[]
+  purchases      Purchase[]
 
   @@map("asset_categories")
 }
 
+model CategoryStockMovement {
+  id          String        @id @default(cuid())
+  categoryId  String        @map("category_id")
+  type        String
+  quantity    Int
+  notes       String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  createdById String        @map("created_by_id")
+  category    AssetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation("CategoryStockMovements", fields: [createdById], references: [id])
+
+  @@index([categoryId])
+  @@map("category_stock_movements")
+}
+
 model AssetCustomFieldDef {
-  id         String                  @id @default(cuid())
-  categoryId String                  @map("category_id")
-  label      String
-  fieldType  String                  @default("text") @map("field_type")
-  options    String[]
-  sortOrder  Int                     @default(0) @map("sort_order")
-  required   Boolean                 @default(false)
-  isUnique   Boolean                 @default(false) @map("is_unique")
-  createdAt  DateTime                @default(now()) @map("created_at")
-  updatedAt  DateTime                @updatedAt @map("updated_at")
-  category   AssetCategory           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  values     AssetCustomFieldValue[]
+  id             String                  @id @default(cuid())
+  categoryId     String                  @map("category_id")
+  label          String
+  fieldType      String                  @default("text") @map("field_type")
+  options        String[]
+  sortOrder      Int                     @default(0) @map("sort_order")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  required       Boolean                 @default(false)
+  isUnique       Boolean                 @default(false) @map("is_unique")
+  category       AssetCategory           @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  values         AssetCustomFieldValue[]
+  alertInstances AssetAlertInstance[]
 
   @@index([categoryId])
   @@map("asset_custom_field_defs")
+}
+
+model AssetAlertInstance {
+  id         String              @id @default(cuid())
+  fieldDefId String              @map("field_def_id")
+  assetId    String              @map("asset_id")
+  dueAt      DateTime            @map("due_at")
+  dismissed  Boolean             @default(false)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  fieldDef   AssetCustomFieldDef @relation(fields: [fieldDefId], references: [id], onDelete: Cascade)
+  asset      Asset               @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([dueAt, dismissed])
+  @@map("asset_alert_instances")
 }
 
 model AssetCustomFieldValue {
@@ -302,10 +359,8 @@ model AssetCustomFieldValue {
   assetId    String              @map("asset_id")
   fieldDefId String              @map("field_def_id")
   value      String
-
   createdAt  DateTime            @default(now()) @map("created_at")
   updatedAt  DateTime            @updatedAt @map("updated_at")
-
   asset      Asset               @relation(fields: [assetId], references: [id], onDelete: Cascade)
   fieldDef   AssetCustomFieldDef @relation(fields: [fieldDefId], references: [id], onDelete: Cascade)
 
@@ -341,20 +396,19 @@ model CpuGenerationConfig {
 }
 
 model HardwarePart {
-  id          String          @id @default(cuid())
-  type        HardwarePartType
-  brand       String
-  model       String
-  specs       Json?
-  scorePoints Int             @map("score_points")
-  notes       String?
-  active      Boolean         @default(true)
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-
-  cpuAssets     Asset[] @relation("AssetCpuPart")
-  ramAssets     Asset[] @relation("AssetRamPart")
-  storageAssets Asset[] @relation("AssetStoragePart")
+  id            String           @id @default(cuid())
+  type          HardwarePartType
+  brand         String
+  model         String
+  specs         Json?
+  scorePoints   Int              @map("score_points")
+  notes         String?
+  active        Boolean          @default(true)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  cpuAssets     Asset[]          @relation("AssetCpuPart")
+  ramAssets     Asset[]          @relation("AssetRamPart")
+  storageAssets Asset[]          @relation("AssetStoragePart")
 
   @@index([type])
   @@index([active])
@@ -362,45 +416,46 @@ model HardwarePart {
 }
 
 model Asset {
-  id                String              @id @default(cuid())
-  tag               String              @unique
+  id                String                  @id @default(cuid())
+  tag               String                  @unique
   name              String
-  categoryId        String              @map("category_id")
-  status            AssetStatus         @default(STOCK)
-  assignedToUserId  String?             @map("assigned_to_user_id")
+  categoryId        String                  @map("category_id")
+  status            AssetStatus             @default(STOCK)
+  assignedToUserId  String?                 @map("assigned_to_user_id")
   location          String?
-  serialNumber      String?             @map("serial_number")
-  acquisitionCost   Decimal?            @map("acquisition_cost") @db.Decimal(12, 2)
-  currentValue      Decimal?            @map("current_value") @db.Decimal(12, 2)
-  acquisitionDate   DateTime?           @map("acquisition_date")
-  warrantyUntil     DateTime?           @map("warranty_until")
+  serialNumber      String?                 @map("serial_number")
+  acquisitionCost   Decimal?                @map("acquisition_cost") @db.Decimal(12, 2)
+  currentValue      Decimal?                @map("current_value") @db.Decimal(12, 2)
+  acquisitionDate   DateTime?               @map("acquisition_date")
+  warrantyUntil     DateTime?               @map("warranty_until")
   notes             String?
-  ramGb             Int?                @map("ram_gb")
-  storageType       StorageType?        @map("storage_type")
-  storageGb         Int?                @map("storage_gb")
-  cpuBrand          CpuBrand?           @map("cpu_brand")
-  cpuModel          String?             @map("cpu_model")
-  cpuGeneration     Int?                @map("cpu_generation")
-  performanceScore  Int?                @map("performance_score")
-  performanceLabel  PerformanceLabel?   @map("performance_label")
-  performanceNotes  String?             @map("performance_notes")
-  cpuPartId         String?             @map("cpu_part_id")
-  ramPartId         String?             @map("ram_part_id")
-  storagePartId     String?             @map("storage_part_id")
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @updatedAt @map("updated_at")
-  modelId           String?             @map("model_id")
+  ramGb             Int?                    @map("ram_gb")
+  storageType       StorageType?            @map("storage_type")
+  storageGb         Int?                    @map("storage_gb")
+  cpuBrand          CpuBrand?               @map("cpu_brand")
+  cpuModel          String?                 @map("cpu_model")
+  cpuGeneration     Int?                    @map("cpu_generation")
+  performanceScore  Int?                    @map("performance_score")
+  performanceLabel  PerformanceLabel?       @map("performance_label")
+  performanceNotes  String?                 @map("performance_notes")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  modelId           String?                 @map("model_id")
+  cpuPartId         String?                 @map("cpu_part_id")
+  ramPartId         String?                 @map("ram_part_id")
+  storagePartId     String?                 @map("storage_part_id")
+  customFieldValues AssetCustomFieldValue[]
   assetFiles        AssetFile[]
   movements         AssetMovement[]
   assetNotes        AssetNote[]
-  customFieldValues AssetCustomFieldValue[]
-  assignedToUser    User?               @relation("AssetAssignedTo", fields: [assignedToUserId], references: [id])
-  category          AssetCategory       @relation(fields: [categoryId], references: [id])
-  model             AssetModel?         @relation(fields: [modelId], references: [id])
+  assignedToUser    User?                   @relation("AssetAssignedTo", fields: [assignedToUserId], references: [id])
+  category          AssetCategory           @relation(fields: [categoryId], references: [id])
+  cpuPart           HardwarePart?           @relation("AssetCpuPart", fields: [cpuPartId], references: [id])
+  model             AssetModel?             @relation(fields: [modelId], references: [id])
+  ramPart           HardwarePart?           @relation("AssetRamPart", fields: [ramPartId], references: [id])
+  storagePart       HardwarePart?           @relation("AssetStoragePart", fields: [storagePartId], references: [id])
   orderItemsAsAsset MovementOrderItem[]
-  cpuPart           HardwarePart?       @relation("AssetCpuPart", fields: [cpuPartId], references: [id], onDelete: SetNull)
-  ramPart           HardwarePart?       @relation("AssetRamPart", fields: [ramPartId], references: [id], onDelete: SetNull)
-  storagePart       HardwarePart?       @relation("AssetStoragePart", fields: [storagePartId], references: [id], onDelete: SetNull)
+  alertInstances    AssetAlertInstance[]
 
   @@index([status])
   @@index([assignedToUserId])
@@ -509,6 +564,22 @@ model MovementOrderItem {
   @@map("movement_order_items")
 }
 
+model UserEvent {
+  id          String        @id @default(cuid())
+  userId      String        @map("user_id")
+  actorId     String?       @map("actor_id")
+  type        UserEventType
+  description String?
+  meta        Json?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  actor       User?         @relation("UserEventActor", fields: [actorId], references: [id])
+  user        User          @relation("UserEventTarget", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([actorId])
+  @@map("user_events")
+}
+
 enum UserRole {
   COLABORADOR
   AUXILIAR_TI
@@ -554,12 +625,19 @@ enum MessageVisibility {
   AUTHOR
 }
 
+enum AssetCategoryKind {
+  EQUIPMENT
+  ACCESSORY
+  DISPOSABLE
+}
+
 enum AssetStatus {
   STOCK
   DEPLOYED
   MAINTENANCE
   DISCARDED
   LOANED
+  IRREGULAR
 }
 
 enum StorageType {
@@ -606,6 +684,7 @@ enum HardwarePartType {
 }
 
 enum MovementType {
+  CREATED
   CHECK_IN
   CHECK_OUT
   TRANSFER
@@ -650,20 +729,37 @@ enum UserEventType {
   PROFILE_REACTIVATED
 }
 
-model UserEvent {
-  id          String        @id @default(cuid())
-  userId      String        @map("user_id")
-  actorId     String?       @map("actor_id")
-  type        UserEventType
-  description String?
-  meta        Json?
+enum PurchaseStatus {
+  PENDING
+  RECEIVED
+  CANCELED
+}
 
-  createdAt   DateTime      @default(now()) @map("created_at")
+model Purchase {
+  id            String         @id @default(cuid())
+  title         String
+  supplier      String?
+  quantity      Int            @default(1)
+  unitPrice     Decimal?       @map("unit_price") @db.Decimal(12, 2)
+  invoiceNumber String?        @map("invoice_number")
+  purchaseDate  DateTime?      @map("purchase_date")
+  categoryId    String?        @map("category_id")
+  status        PurchaseStatus @default(PENDING)
+  notes         String?
+  imageData     String?        @map("image_data")
+  specifications String?
+  buyerId       String?        @map("buyer_id")
+  orderedById   String?        @map("ordered_by_id")
+  createdById   String         @map("created_by_id")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  user        User          @relation("UserEventTarget", fields: [userId], references: [id], onDelete: Cascade)
-  actor       User?         @relation("UserEventActor", fields: [actorId], references: [id])
+  category  AssetCategory? @relation(fields: [categoryId], references: [id])
+  buyer     User?          @relation("PurchasesBuyer", fields: [buyerId], references: [id])
+  orderedBy User?          @relation("PurchasesOrdered", fields: [orderedById], references: [id])
+  createdBy User           @relation("PurchasesCreated", fields: [createdById], references: [id])
 
-  @@index([userId])
-  @@index([actorId])
-  @@map("user_events")
+  @@index([categoryId])
+  @@index([status])
+  @@map("purchases")
 }

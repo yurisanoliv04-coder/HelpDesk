@@ -42,7 +42,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
         ✓ Concluídos: {done}
       </p>
       <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#38bdf8' }}>
-        ○ Em aberto: {open}
+        ○ Abertos: {open}
       </p>
     </div>
   )
@@ -72,7 +72,7 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068' }}>
             <span style={{ width: 16, height: 1.5, background: '#38bdf8', display: 'inline-block', borderRadius: 2 }} />
-            em aberto
+            abertos no dia
           </span>
           <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060' }}>
             últimos 30 dias

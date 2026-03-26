@@ -113,7 +113,7 @@ export default async function TicketsPage({
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <p className="section-label" style={{ marginBottom: 10 }}>SISTEMA / CHAMADOS</p>
-          <h1 style={{ fontSize: 30, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.01em', lineHeight: 1 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em', lineHeight: 1 }}>
             Chamados
           </h1>
         </div>
@@ -122,8 +122,8 @@ export default async function TicketsPage({
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '9px 18px',
-            background: 'rgba(0,217,184,0.1)', border: '1px solid rgba(0,217,184,0.25)',
-            borderRadius: 6, color: '#00d9b8', fontSize: 13,
+            background: 'var(--accent-cyan-dim)', border: '1px solid var(--accent-cyan)',
+            borderRadius: 6, color: 'var(--accent-cyan)', fontSize: 13,
             fontFamily: "'JetBrains Mono', monospace", fontWeight: 500,
             textDecoration: 'none', flexShrink: 0,
           }}

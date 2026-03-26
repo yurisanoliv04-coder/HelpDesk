@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { UserRole } from '@prisma/client'
-import { useTheme } from '@/lib/context/theme'
 
 interface NavItem {
   href: string
@@ -41,6 +40,12 @@ const navItems: NavItem[] = [
     href: '/assets',
     label: 'Patrimônio',
     icon: <NavIcon d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />,
+    roles: ['TECNICO', 'ADMIN'],
+  },
+  {
+    href: '/consumiveis',
+    label: 'Acessórios',
+    icon: <NavIcon d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />,
     roles: ['TECNICO', 'ADMIN'],
   },
   {
@@ -97,7 +102,6 @@ interface SidebarProps {
 
 export default function Sidebar({ userName, userRole, userInitials }: SidebarProps) {
   const pathname = usePathname()
-  const { theme, toggleTheme } = useTheme()
 
   const visibleItems = navItems.filter(
     (item) => !item.roles || item.roles.includes(userRole),
@@ -107,7 +111,7 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
     <aside
       style={{
         width: 'var(--sidebar-w)',
-        background: '#080d18',
+        background: 'var(--bg-sidebar)',
         borderRight: '1px solid rgba(255,255,255,0.06)',
       }}
       className="fixed inset-y-0 left-0 flex flex-col z-30"
@@ -119,8 +123,8 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
       >
         <div
           style={{
-            background: 'linear-gradient(135deg, #00d9b8 0%, #0ea5e9 100%)',
-            boxShadow: '0 0 16px rgba(0,217,184,0.35)',
+            background: 'linear-gradient(135deg, var(--accent-cyan) 0%, #0ea5e9 100%)',
+            boxShadow: '0 0 16px var(--accent-glow)',
           }}
           className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
         >
@@ -129,10 +133,10 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
           </svg>
         </div>
         <div>
-          <p style={{ color: '#e2e8f0', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 14, lineHeight: 1 }}>
+          <p style={{ color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 14, lineHeight: 1 }}>
             HelpDesk
           </p>
-          <p style={{ color: '#3d5068', fontSize: 11, marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
             v2.0 · Itamarathy
           </p>
         </div>
@@ -159,9 +163,9 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
                   }`}
                   style={{
                     animationDelay: `${i * 40}ms`,
-                    borderLeft: isActive ? '2px solid #00d9b8' : '2px solid transparent',
-                    color: isActive ? '#00d9b8' : '#64748b',
-                    background: isActive ? 'rgba(0,217,184,0.07)' : 'transparent',
+                    borderLeft: isActive ? '2px solid var(--accent-cyan)' : '2px solid transparent',
+                    color: isActive ? 'var(--accent-cyan)' : '#64748b',
+                    background: isActive ? 'var(--accent-cyan-dim)' : 'transparent',
                   }}
                   aria-current={isActive ? 'page' : undefined}
                   onMouseEnter={(e) => {
@@ -191,39 +195,6 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
       {/* ── Footer ─────────────────────────────────────────── */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} className="p-3 space-y-3">
 
-        {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: '1px solid rgba(255,255,255,0.07)',
-            background: 'rgba(255,255,255,0.03)',
-            color: '#64748b',
-            cursor: 'pointer',
-            fontSize: 13,
-            fontFamily: "'JetBrains Mono', monospace",
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-        >
-          {theme === 'dark' ? (
-            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
-          <span>{theme === 'dark' ? 'Modo claro' : 'Modo escuro'}</span>
-        </button>
-
         {/* User card */}
         <div
           style={{
@@ -251,7 +222,7 @@ export default function Sidebar({ userName, userRole, userInitials }: SidebarPro
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 13, fontWeight: 500, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {userName}
             </p>
             <span style={{

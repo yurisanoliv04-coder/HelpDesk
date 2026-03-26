@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/middleware'
 import { prisma } from '@/lib/db/prisma'
 import { ok, err, generateTicketCode } from '@/lib/utils/api'
-import { broadcastEvent } from '@/app/api/realtime/route'
+import { broadcastEvent } from '@/lib/realtime/clients'
 import { z } from 'zod'
 
 const CreateTicketSchema = z.object({

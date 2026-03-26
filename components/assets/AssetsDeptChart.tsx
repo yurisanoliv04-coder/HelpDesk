@@ -1,8 +1,8 @@
 'use client'
 
+import { useRef, useState, useEffect } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
 
 export interface DeptStat {
@@ -86,16 +86,41 @@ function CustomLegend({ payload }: { payload?: Array<{ value: string; color: str
   )
 }
 
+// ── Min pixels allocated per department bar ─────────────────────────────────
+const MIN_COL_PX = 120
+
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function AssetsDeptChart({ data }: { data: DeptStat[] }) {
+  // Measure the card's usable width so we can fill it exactly,
+  // or expand beyond it (with scroll) when there are many departments.
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [wrapperW, setWrapperW] = useState(0)
+
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    // Initial measurement
+    setWrapperW(el.clientWidth)
+    // Keep in sync when the layout changes (sidebar open/close, window resize)
+    const ro = new ResizeObserver(([entry]) => {
+      setWrapperW(entry.contentRect.width)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   if (data.length === 0) return null
 
   const grandTotal = data.reduce((s, d) => s + d.BOM + d.INTERMEDIARIO + d.RUIM + d.NONE, 0)
 
-  // Truncate long department names for axis labels
+  // Chart is at least as wide as the wrapper, but grows MIN_COL_PX per dept
+  const chartWidth = Math.max(wrapperW, data.length * MIN_COL_PX)
+
+  // Truncate labels adaptively so they don't overlap on the X-axis
+  const maxLabelLen = data.length > 12 ? 7 : data.length > 7 ? 10 : 14
   const chartData = data.map(d => ({
     ...d,
-    name: d.name.length > 13 ? d.name.slice(0, 12) + '…' : d.name,
+    name:     d.name.length > maxLabelLen ? d.name.slice(0, maxLabelLen - 1) + '…' : d.name,
     fullName: d.name,
   }))
 
@@ -111,62 +136,78 @@ export default function AssetsDeptChart({ data }: { data: DeptStat[] }) {
           fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
           fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em',
         }}>
-          DISTRIBUIÇÃO DE ATIVOS IMPLANTADOS
+          DISTRIBUIÇÃO DE ATIVOS POR LOCAL
         </p>
         <p style={{ fontSize: 12, color: '#2d4060', marginTop: 4 }}>
           {grandTotal} ativo{grandTotal !== 1 ? 's' : ''} em{' '}
-          {data.length} departamento{data.length !== 1 ? 's' : ''}
+          {data.length} local{data.length !== 1 ? 'is' : ''}
         </p>
       </div>
 
-      {/* Recharts stacked bar chart */}
-      <ResponsiveContainer width="100%" height={230}>
-        <BarChart
-          data={chartData}
-          barCategoryGap="35%"
-          margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="rgba(255,255,255,0.04)"
-            vertical={false}
-          />
-          <XAxis
-            dataKey="name"
-            tick={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 10, fill: '#3d5068',
-            }}
-            axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 9, fill: '#2d4060',
-            }}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-          />
-          <Tooltip
-            content={<CustomTooltip />}
-            cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-          />
-          <Legend content={<CustomLegend />} />
-
-          {SEGS.map(seg => (
-            <Bar
-              key={seg.key}
-              dataKey={seg.key}
-              name={seg.label}
-              stackId="a"
-              fill={seg.color}
-              fillOpacity={0.85}
+      {/*
+        Outer div: measures the available width (via ref) and scrolls when
+        the chart is wider than it.
+      */}
+      <div
+        ref={wrapperRef}
+        style={{
+          overflowX: chartWidth > wrapperW ? 'auto' : 'visible',
+          overflowY: 'visible',
+          scrollbarWidth: 'thin',
+          scrollbarColor: 'rgba(255,255,255,0.12) transparent',
+        }}
+      >
+        {/* Only render once we have a real measurement */}
+        {wrapperW > 0 && (
+          <BarChart
+            width={chartWidth}
+            height={250}
+            data={chartData}
+            barCategoryGap="30%"
+            margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(255,255,255,0.04)"
+              vertical={false}
             />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+            <XAxis
+              dataKey="name"
+              tick={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 10, fill: '#3d5068',
+              }}
+              axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9, fill: '#2d4060',
+              }}
+              axisLine={false}
+              tickLine={false}
+              allowDecimals={false}
+            />
+            <Tooltip
+              content={<CustomTooltip />}
+              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+            />
+            <Legend content={<CustomLegend />} />
+
+            {SEGS.map(seg => (
+              <Bar
+                key={seg.key}
+                dataKey={seg.key}
+                name={seg.label}
+                stackId="a"
+                fill={seg.color}
+                fillOpacity={0.85}
+              />
+            ))}
+          </BarChart>
+        )}
+      </div>
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import { redirect } from 'next/navigation'
 import { scoreComputer, scoreFromCatalog } from '@/lib/scoring/computer'
+import { triggerAssetAlerts } from '@/app/(app)/settings/actions'
 
 // ─── Auth helper ────────────────────────────────────────────────────────────
 async function requireEditor() {
@@ -326,6 +327,8 @@ export async function updateAssetFull(
             notes: movNotes,
           },
         })
+        // Trigger scheduled alerts for this movement type
+        await triggerAssetAlerts(assetId, input.categoryId ?? current.categoryId, movementType)
       } catch {
         // Movement logging may fail if the server was started before the UPDATE
         // migration was applied. The asset update itself succeeded. Restart the
@@ -425,7 +428,7 @@ export async function checkInAsset(assetId: string, location?: string, notes?: s
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },
-    select: { id: true, status: true, assignedToUserId: true, location: true },
+    select: { id: true, status: true, assignedToUserId: true, location: true, categoryId: true },
   })
   if (!asset) throw new Error('Ativo não encontrado')
 
@@ -454,6 +457,8 @@ export async function checkInAsset(assetId: string, location?: string, notes?: s
     }),
   ])
 
+  await triggerAssetAlerts(assetId, asset.categoryId, 'CHECK_IN')
+
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/assets')
   revalidatePath('/movements')
@@ -465,7 +470,7 @@ export async function checkOutAsset(assetId: string, toUserId: string, location?
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },
-    select: { id: true, status: true, assignedToUserId: true, location: true },
+    select: { id: true, status: true, assignedToUserId: true, location: true, categoryId: true },
   })
   if (!asset) throw new Error('Ativo não encontrado')
 
@@ -494,6 +499,8 @@ export async function checkOutAsset(assetId: string, toUserId: string, location?
       },
     }),
   ])
+
+  await triggerAssetAlerts(assetId, asset.categoryId, 'CHECK_OUT')
 
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/assets')

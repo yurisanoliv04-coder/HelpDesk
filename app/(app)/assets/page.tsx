@@ -26,6 +26,7 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; d
   MAINTENANCE: { label: 'Manutenção', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  dot: '#fbbf24' },
   DISCARDED:   { label: 'Descartado', color: '#f87171', bg: 'rgba(248,113,113,0.08)', dot: '#f87171' },
   LOANED:      { label: 'Emprestado', color: '#38bdf8', bg: 'rgba(56,189,248,0.08)',  dot: '#38bdf8' },
+  IRREGULAR:   { label: 'Irregular',  color: '#f97316', bg: 'rgba(249,115,22,0.08)',  dot: '#f97316' },
 }
 
 const perfConfig: Record<string, { label: string; color: string; track: string }> = {
@@ -104,11 +105,8 @@ export default async function AssetsPage({
     }),
     prisma.assetCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.asset.findMany({
-      where: { status: 'DEPLOYED', assignedToUserId: { not: null } },
-      select: {
-        performanceLabel: true,
-        assignedToUser:   { select: { department: { select: { id: true, name: true } } } },
-      },
+      where: { location: { not: null } },
+      select: { performanceLabel: true, location: true },
     }),
     prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ])
@@ -128,20 +126,18 @@ export default async function AssetsPage({
   const totalCount = Object.values(countMap).reduce((a, b) => a + b, 0)
   const totalPages = Math.ceil(filteredTotal / PAGE_SIZE)
 
-  // ── Department chart data ───────────────────────────────────────────────
-  const deptMap: Record<string, DeptStat> = {}
+  // ── Location chart data ─────────────────────────────────────────────────
+  const locMap: Record<string, DeptStat> = {}
   for (const asset of deployedForChart) {
-    const dept    = asset.assignedToUser?.department
-    const deptKey = dept?.id ?? '__none__'
-    const deptName= dept?.name ?? 'Sem departamento'
-    if (!deptMap[deptKey]) deptMap[deptKey] = { name: deptName, BOM: 0, INTERMEDIARIO: 0, RUIM: 0, NONE: 0 }
+    const loc = asset.location ?? 'Sem local'
+    if (!locMap[loc]) locMap[loc] = { name: loc, BOM: 0, INTERMEDIARIO: 0, RUIM: 0, NONE: 0 }
     const perf = asset.performanceLabel
-    if (perf === 'BOM') deptMap[deptKey].BOM++
-    else if (perf === 'INTERMEDIARIO') deptMap[deptKey].INTERMEDIARIO++
-    else if (perf === 'RUIM') deptMap[deptKey].RUIM++
-    else deptMap[deptKey].NONE++
+    if (perf === 'BOM') locMap[loc].BOM++
+    else if (perf === 'INTERMEDIARIO') locMap[loc].INTERMEDIARIO++
+    else if (perf === 'RUIM') locMap[loc].RUIM++
+    else locMap[loc].NONE++
   }
-  const deptChartData = Object.values(deptMap)
+  const deptChartData = Object.values(locMap)
     .sort((a, b) => (b.BOM + b.INTERMEDIARIO + b.RUIM + b.NONE) - (a.BOM + a.INTERMEDIARIO + a.RUIM + a.NONE))
 
   // ── Active filter label ─────────────────────────────────────────────────
@@ -168,6 +164,7 @@ export default async function AssetsPage({
     { key: 'MAINTENANCE', label: 'Manutenção',  href: '/assets?status=MAINTENANCE',    count: countMap.MAINTENANCE ?? 0 },
     { key: 'LOANED',      label: 'Emprestados', href: '/assets?status=LOANED',         count: countMap.LOANED ?? 0 },
     { key: 'DISCARDED',   label: 'Descartados', href: '/assets?status=DISCARDED',      count: countMap.DISCARDED ?? 0 },
+    { key: 'IRREGULAR',   label: 'Irregulares', href: '/assets?status=IRREGULAR',      count: countMap.IRREGULAR ?? 0 },
   ]
   const activeStatusChip = sp.status ?? null
 

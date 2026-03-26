@@ -197,13 +197,17 @@ export async function toggleTicketCategoryActive(categoryId: string) {
 }
 
 // ─── Asset categories ─────────────────────────────────────────────────────────
-export async function createAssetCategory(name: string, icon: string): Promise<{ ok: boolean; error?: string }> {
+export async function createAssetCategory(
+  name: string,
+  icon: string,
+  kind: 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE' = 'EQUIPMENT',
+): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
     if (!name.trim()) return { ok: false, error: 'Nome é obrigatório' }
     const exists = await prisma.assetCategory.findUnique({ where: { name: name.trim() } })
     if (exists) return { ok: false, error: 'Já existe uma categoria com este nome' }
-    await prisma.assetCategory.create({ data: { name: name.trim(), icon: icon.trim() || null } })
+    await prisma.assetCategory.create({ data: { name: name.trim(), icon: icon.trim() || null, kind } })
     revalidatePath('/settings')
     return { ok: true }
   } catch (e) {
@@ -211,7 +215,14 @@ export async function createAssetCategory(name: string, icon: string): Promise<{
   }
 }
 
-export async function updateAssetCategory(id: string, name: string, icon: string): Promise<{ ok: boolean; error?: string }> {
+export async function updateAssetCategory(
+  id: string,
+  name: string,
+  icon: string,
+  kind: 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE' = 'EQUIPMENT',
+  stockQuantity?: number,
+  stockMinQty?: number,
+): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
     if (!name.trim()) return { ok: false, error: 'Nome é obrigatório' }
@@ -219,18 +230,48 @@ export async function updateAssetCategory(id: string, name: string, icon: string
       where: { name: { equals: name.trim() }, NOT: { id } },
     })
     if (exists) return { ok: false, error: 'Já existe uma categoria com este nome' }
-    await prisma.assetCategory.update({
-      where: { id },
-      data: { name: name.trim(), icon: icon.trim() || null },
-    })
+    const data: Record<string, unknown> = { name: name.trim(), icon: icon.trim() || null, kind }
+    if (kind === 'ACCESSORY' || kind === 'DISPOSABLE') {
+      if (stockQuantity !== undefined) data.stockQuantity = Math.max(0, Math.floor(stockQuantity))
+      if (stockMinQty  !== undefined) data.stockMinQty   = Math.max(0, Math.floor(stockMinQty))
+    }
+    await prisma.assetCategory.update({ where: { id }, data })
     revalidatePath('/settings')
+    revalidatePath('/consumiveis')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
   }
 }
 
-export async function deleteAssetCategory(id: string): Promise<{ ok: boolean; error?: string }> {
+export interface CategoryDeleteImpact {
+  assetCount: number
+  modelCount: number
+  fieldCount: number
+  movementCount: number
+}
+
+export async function getAssetCategoryDeleteImpact(
+  id: string,
+): Promise<{ ok: boolean; data?: CategoryDeleteImpact; error?: string }> {
+  try {
+    await requireAdmin()
+    const [assetCount, modelCount, fieldCount, movementCount] = await Promise.all([
+      prisma.asset.count({ where: { categoryId: id } }),
+      prisma.assetModel.count({ where: { categoryId: id } }),
+      prisma.assetCustomFieldDef.count({ where: { categoryId: id } }),
+      prisma.assetMovement.count({ where: { asset: { categoryId: id } } }),
+    ])
+    return { ok: true, data: { assetCount, modelCount, fieldCount, movementCount } }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro' }
+  }
+}
+
+export async function deleteAssetCategory(
+  id: string,
+  force = false,
+): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
     const cat = await prisma.assetCategory.findUnique({
@@ -238,9 +279,36 @@ export async function deleteAssetCategory(id: string): Promise<{ ok: boolean; er
       include: { _count: { select: { assets: true } } },
     })
     if (!cat) return { ok: false, error: 'Categoria não encontrada' }
-    if (cat._count.assets > 0)
-      return { ok: false, error: `Esta categoria possui ${cat._count.assets} ativo(s). Reassine-os antes de excluir.` }
-    await prisma.assetCategory.delete({ where: { id } })
+
+    if (cat._count.assets > 0 && !force) {
+      return { ok: false, error: `Esta categoria possui ${cat._count.assets} ativo(s).` }
+    }
+
+    if (force && cat._count.assets > 0) {
+      const assets = await prisma.asset.findMany({
+        where: { categoryId: id },
+        select: { id: true },
+      })
+      const assetIds = assets.map((a) => a.id)
+
+      await prisma.$transaction([
+        // MovementOrderItem não tem cascade a partir de Asset
+        prisma.movementOrderItem.deleteMany({ where: { assetId: { in: assetIds } } }),
+        // AssetMovement não tem cascade a partir de Asset
+        prisma.assetMovement.deleteMany({ where: { assetId: { in: assetIds } } }),
+        // Demais relações com cascade (explícito para garantir ordem)
+        prisma.assetCustomFieldValue.deleteMany({ where: { assetId: { in: assetIds } } }),
+        prisma.assetNote.deleteMany({ where: { assetId: { in: assetIds } } }),
+        prisma.assetFile.deleteMany({ where: { assetId: { in: assetIds } } }),
+        // Exclui os ativos
+        prisma.asset.deleteMany({ where: { id: { in: assetIds } } }),
+        // Exclui a categoria (cascade: AssetCustomFieldDef + AssetModel)
+        prisma.assetCategory.delete({ where: { id } }),
+      ])
+    } else {
+      await prisma.assetCategory.delete({ where: { id } })
+    }
+
     revalidatePath('/settings')
     return { ok: true }
   } catch (e) {
@@ -254,6 +322,94 @@ export async function toggleAssetCategoryActive(categoryId: string) {
   if (!cat) throw new Error('Categoria não encontrada')
   await prisma.assetCategory.update({ where: { id: categoryId }, data: { active: !cat.active } })
   revalidatePath('/settings')
+}
+
+// ─── Stock movements (ACCESSORY / DISPOSABLE) ──────────────────────────────────
+
+export interface StockMovementRow {
+  id: string
+  type: string
+  quantity: number
+  notes: string | null
+  createdAt: Date
+  createdBy: string
+}
+
+export async function getCategoryStockMovements(
+  categoryId: string,
+  take = 10,
+): Promise<StockMovementRow[]> {
+  await requireAdmin()
+  const rows = await prisma.categoryStockMovement.findMany({
+    where: { categoryId },
+    orderBy: { createdAt: 'desc' },
+    take,
+    select: {
+      id: true, type: true, quantity: true, notes: true, createdAt: true,
+      createdBy: { select: { name: true } },
+    },
+  })
+  return rows.map(r => ({ ...r, createdBy: r.createdBy.name }))
+}
+
+export async function addStockEntry(
+  categoryId: string,
+  quantity: number,
+  notes?: string,
+): Promise<{ ok: boolean; error?: string; newQty?: number }> {
+  try {
+    const session = await requireAdmin()
+    if (quantity <= 0) return { ok: false, error: 'Quantidade deve ser maior que zero' }
+
+    const cat = await prisma.assetCategory.findUnique({ where: { id: categoryId }, select: { stockQuantity: true } })
+    if (!cat) return { ok: false, error: 'Categoria não encontrada' }
+
+    const newQty = cat.stockQuantity + quantity
+
+    await prisma.$transaction([
+      prisma.assetCategory.update({ where: { id: categoryId }, data: { stockQuantity: newQty } }),
+      prisma.categoryStockMovement.create({
+        data: { categoryId, type: 'ENTRY', quantity, notes: notes?.trim() || null, createdById: session.user.id },
+      }),
+    ])
+
+    revalidatePath('/settings')
+    revalidatePath('/consumiveis')
+    return { ok: true, newQty }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro' }
+  }
+}
+
+export async function addStockExit(
+  categoryId: string,
+  quantity: number,
+  notes?: string,
+): Promise<{ ok: boolean; error?: string; newQty?: number }> {
+  try {
+    const session = await requireAdmin()
+    if (quantity <= 0) return { ok: false, error: 'Quantidade deve ser maior que zero' }
+
+    const cat = await prisma.assetCategory.findUnique({ where: { id: categoryId }, select: { stockQuantity: true } })
+    if (!cat) return { ok: false, error: 'Categoria não encontrada' }
+    if (cat.stockQuantity < quantity)
+      return { ok: false, error: `Estoque insuficiente. Disponível: ${cat.stockQuantity}` }
+
+    const newQty = cat.stockQuantity - quantity
+
+    await prisma.$transaction([
+      prisma.assetCategory.update({ where: { id: categoryId }, data: { stockQuantity: newQty } }),
+      prisma.categoryStockMovement.create({
+        data: { categoryId, type: 'EXIT', quantity, notes: notes?.trim() || null, createdById: session.user.id },
+      }),
+    ])
+
+    revalidatePath('/settings')
+    revalidatePath('/consumiveis')
+    return { ok: true, newQty }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro' }
+  }
 }
 
 // ─── Asset Locations ───────────────────────────────────────────────────────────
@@ -347,7 +503,7 @@ export interface AssetCustomField {
 export async function getAssetCustomFields(): Promise<AssetCustomField[]> {
   const row = await prisma.systemConfig.findUnique({ where: { key: CUSTOM_FIELDS_KEY } })
   if (!row) return []
-  return row.value as AssetCustomField[]
+  return row.value as unknown as AssetCustomField[]
 }
 
 export async function saveAssetCustomFields(fields: AssetCustomField[]): Promise<{ ok: boolean; error?: string }> {
@@ -371,7 +527,7 @@ const SCORING_CONFIG_KEY = 'computer_scoring'
 export async function getComputerScoringConfig(): Promise<ComputerScoringConfig> {
   const row = await prisma.systemConfig.findUnique({ where: { key: SCORING_CONFIG_KEY } })
   if (!row) return DEFAULT_SCORING_CONFIG
-  return row.value as ComputerScoringConfig
+  return row.value as unknown as ComputerScoringConfig
 }
 
 export async function saveComputerScoringConfig(config: ComputerScoringConfig): Promise<{ ok: boolean; error?: string }> {
@@ -481,7 +637,7 @@ export interface AssetCustomFieldDefData {
   id: string
   categoryId: string
   label: string
-  fieldType: 'text' | 'checkbox_group'
+  fieldType: 'text' | 'checkbox_group' | 'alert'
   options: string[]
   sortOrder: number
   required: boolean
@@ -496,7 +652,7 @@ export async function getAssetCustomFieldDefs(): Promise<AssetCustomFieldDefData
     id: r.id,
     categoryId: r.categoryId,
     label: r.label,
-    fieldType: r.fieldType as 'text' | 'checkbox_group',
+    fieldType: r.fieldType as 'text' | 'checkbox_group' | 'alert',
     options: r.options as string[],
     sortOrder: r.sortOrder,
     required: r.required,
@@ -548,6 +704,114 @@ export async function deleteAssetCustomFieldDef(id: string): Promise<{ ok: boole
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+// ─── Asset Alert Instances ─────────────────────────────────────────────────────
+
+export interface AssetAlertInstanceData {
+  id: string
+  assetId: string
+  assetTag: string
+  assetName: string
+  label: string       // alert message (from fieldDef.label)
+  dueAt: Date
+  dismissed: boolean
+  triggerType: string  // options[0]
+  delayDays: number    // options[1] parsed
+  categoryName: string
+}
+
+/** Triggered after a movement is created — spawns alert instances for matching rules */
+export async function triggerAssetAlerts(
+  assetId: string,
+  categoryId: string,
+  movementType: string,
+): Promise<void> {
+  // Find alert rules for this category + trigger type
+  const rules = await prisma.assetCustomFieldDef.findMany({
+    where: { categoryId, fieldType: 'alert' },
+  })
+  const matching = rules.filter(r => r.options[0] === movementType)
+  if (matching.length === 0) return
+
+  const now = new Date()
+  for (const rule of matching) {
+    const delayDays = parseInt(rule.options[1] ?? '0', 10) || 0
+    const dueAt = new Date(now.getTime() + delayDays * 24 * 60 * 60 * 1000)
+    // Avoid duplicate — if there's already a pending (non-dismissed) instance for same rule+asset, skip
+    const existing = await prisma.assetAlertInstance.findFirst({
+      where: { fieldDefId: rule.id, assetId, dismissed: false },
+    })
+    if (!existing) {
+      await prisma.assetAlertInstance.create({
+        data: { fieldDefId: rule.id, assetId, dueAt },
+      })
+    }
+  }
+}
+
+/** Get all due (non-dismissed) alerts visible to any TI user */
+export async function getPendingAlerts(): Promise<AssetAlertInstanceData[]> {
+  const rows = await prisma.assetAlertInstance.findMany({
+    where: { dismissed: false, dueAt: { lte: new Date() } },
+    orderBy: { dueAt: 'asc' },
+    take: 20,
+    include: {
+      fieldDef: { include: { category: { select: { name: true } } } },
+      asset:    { select: { id: true, tag: true, name: true } },
+    },
+  })
+  return rows.map(r => ({
+    id: r.id,
+    assetId: r.assetId,
+    assetTag: r.asset.tag,
+    assetName: r.asset.name,
+    label: r.fieldDef.label,
+    dueAt: r.dueAt,
+    dismissed: r.dismissed,
+    triggerType: r.fieldDef.options[0] ?? '',
+    delayDays: parseInt(r.fieldDef.options[1] ?? '0', 10) || 0,
+    categoryName: r.fieldDef.category.name,
+  }))
+}
+
+/** Get upcoming alerts (due within next 7 days, not yet dismissed) */
+export async function getUpcomingAlerts(): Promise<AssetAlertInstanceData[]> {
+  const soon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const rows = await prisma.assetAlertInstance.findMany({
+    where: { dismissed: false, dueAt: { lte: soon } },
+    orderBy: { dueAt: 'asc' },
+    take: 20,
+    include: {
+      fieldDef: { include: { category: { select: { name: true } } } },
+      asset:    { select: { id: true, tag: true, name: true } },
+    },
+  })
+  return rows.map(r => ({
+    id: r.id,
+    assetId: r.assetId,
+    assetTag: r.asset.tag,
+    assetName: r.asset.name,
+    label: r.fieldDef.label,
+    dueAt: r.dueAt,
+    dismissed: r.dismissed,
+    triggerType: r.fieldDef.options[0] ?? '',
+    delayDays: parseInt(r.fieldDef.options[1] ?? '0', 10) || 0,
+    categoryName: r.fieldDef.category.name,
+  }))
+}
+
+export async function dismissAlertInstance(id: string): Promise<{ ok: boolean }> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) return { ok: false }
+    await prisma.assetAlertInstance.update({ where: { id }, data: { dismissed: true } })
+    revalidatePath('/dashboard')
+    revalidatePath('/assets')
+    return { ok: true }
+  } catch {
+    return { ok: false }
   }
 }
 

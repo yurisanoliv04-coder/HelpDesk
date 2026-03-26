@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { name, role, id } = session.user
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#070c14' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>
       <Sidebar
         userName={name ?? ''}
         userRole={role}
@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           marginLeft: 'var(--sidebar-w)',
           padding: '28px 32px',
           minHeight: '100vh',
-          background: '#070c14',
+          background: 'var(--bg-base)',
         }}
       >
         {children}

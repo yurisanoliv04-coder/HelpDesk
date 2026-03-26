@@ -4,88 +4,124 @@ import { useState, useTransition } from 'react'
 import { updateAsset } from '@/app/(app)/assets/[id]/actions'
 import {
   Pencil, X, Check, Loader2,
-  MapPin, Tag, Hash, FileText,
-  Cpu, HardDrive, MemoryStick,
+  Cpu, HardDrive, MemoryStick, Activity,
   DollarSign, Calendar, ShieldCheck,
-  Activity,
+  Tag, MapPin, Hash, FileText, TrendingDown,
 } from 'lucide-react'
 
 type StorageType = 'HDD' | 'SSD_SATA' | 'SSD_NVME'
-type CpuBrand = 'INTEL' | 'AMD' | 'OTHER'
+type CpuBrand   = 'INTEL' | 'AMD' | 'OTHER'
 type AssetStatus = 'STOCK' | 'DEPLOYED' | 'MAINTENANCE' | 'DISCARDED' | 'LOANED'
 
 interface AssetData {
-  id: string
-  name: string
-  location: string | null
-  serialNumber: string | null
-  status: AssetStatus
-  notes: string | null
-  // Hardware
-  ramGb: number | null
-  storageType: StorageType | null
-  storageGb: number | null
-  cpuBrand: CpuBrand | null
-  cpuModel: string | null
-  cpuGeneration: number | null
-  // Financial
-  acquisitionCost: string | null
-  currentValue: string | null
-  acquisitionDate: string | null // ISO string
-  warrantyUntil: string | null   // ISO string
+  id: string; name: string; location: string | null; serialNumber: string | null
+  status: AssetStatus; notes: string | null
+  ramGb: number | null; storageType: StorageType | null; storageGb: number | null
+  cpuBrand: CpuBrand | null; cpuModel: string | null; cpuGeneration: number | null
+  acquisitionCost: string | null; currentValue: string | null
+  acquisitionDate: string | null; warrantyUntil: string | null
 }
 
 interface Props {
-  asset: AssetData
-  canEdit: boolean
-  performanceScore: number | null
-  performanceLabel: string | null
-  performanceNotes: string | null
+  asset: AssetData; canEdit: boolean
+  performanceScore: number | null; performanceLabel: string | null; performanceNotes: string | null
 }
 
+// ── Config ────────────────────────────────────────────────────────────────────
 const statusConfig: Record<AssetStatus, { label: string; color: string; bg: string; border: string }> = {
-  STOCK:       { label: 'Estoque',    color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)' },
-  DEPLOYED:    { label: 'Implantado', color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.2)'  },
-  MAINTENANCE: { label: 'Manutenção', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.2)'  },
-  DISCARDED:   { label: 'Descartado', color: '#f87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
-  LOANED:      { label: 'Emprestado', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.2)'  },
+  STOCK:       { label: 'Estoque',    color: '#94a3b8', bg: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.25)' },
+  DEPLOYED:    { label: 'Implantado', color: '#34d399', bg: 'rgba(52,211,153,0.1)',  border: 'rgba(52,211,153,0.3)'   },
+  MAINTENANCE: { label: 'Manutenção', color: '#fbbf24', bg: 'rgba(251,191,36,0.1)',  border: 'rgba(251,191,36,0.3)'   },
+  DISCARDED:   { label: 'Descartado', color: '#f87171', bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.3)'  },
+  LOANED:      { label: 'Emprestado', color: '#38bdf8', bg: 'rgba(56,189,248,0.1)',  border: 'rgba(56,189,248,0.3)'   },
+}
+const perfConfig: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  BOM:          { color: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.25)',  label: 'Bom'           },
+  INTERMEDIARIO:{ color: '#fbbf24', bg: 'rgba(251,191,36,0.08)',  border: 'rgba(251,191,36,0.25)',  label: 'Intermediário' },
+  RUIM:         { color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.25)', label: 'Ruim'          },
+}
+const cpuColors: Record<string, { color: string; bg: string }> = {
+  INTEL: { color: '#60a5fa', bg: 'rgba(96,165,250,0.1)'  },
+  AMD:   { color: '#f87171', bg: 'rgba(248,113,113,0.1)' },
+  OTHER: { color: '#94a3b8', bg: 'rgba(148,163,184,0.1)' },
 }
 
-const perfConfig: Record<string, { color: string; label: string }> = {
-  BOM:          { color: '#34d399', label: 'Bom' },
-  INTERMEDIARIO:{ color: '#fbbf24', label: 'Intermediário' },
-  RUIM:         { color: '#f87171', label: 'Ruim' },
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function isoToDateInput(iso: string | null) { return iso ? iso.split('T')[0] : '' }
+function fmtBRL(v: string | null) {
+  if (!v) return null
+  const n = parseFloat(v)
+  return isNaN(n) ? null : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+function fmtDate(iso: string | null) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString('pt-BR')
+}
+function isExpired(iso: string | null) {
+  if (!iso) return false
+  return new Date(iso) < new Date()
 }
 
-function isoToDateInput(iso: string | null) {
-  if (!iso) return ''
-  return iso.split('T')[0]
+// ── Sub-components ────────────────────────────────────────────────────────────
+const iS: React.CSSProperties = {
+  background: 'var(--bg-input)', border: '1px solid var(--border)',
+  borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)',
+  fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box',
+  fontFamily: 'inherit', transition: 'border-color 0.15s',
+}
+const sS: React.CSSProperties = {
+  ...iS, cursor: 'pointer', appearance: 'none' as const,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30,
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function FLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600, color: '#3d5068', letterSpacing: '0.08em' }}>
-        {label}
-      </label>
+    <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.09em', marginBottom: 6 }}>
       {children}
+    </p>
+  )
+}
+function FVal({ children, mono }: { children: React.ReactNode; mono?: boolean }) {
+  return (
+    <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', fontFamily: mono ? "'JetBrains Mono', monospace" : 'inherit', lineHeight: 1.3 }}>
+      {children}
+    </p>
+  )
+}
+function FEmpty() {
+  return <p style={{ fontSize: 14, color: 'var(--text-dim)', fontStyle: 'italic' }}>—</p>
+}
+
+function CardHeader({ icon, label, accent }: { icon: React.ReactNode; label: string; accent: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+      <div style={{
+        width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+        background: `${accent}18`, border: `1px solid ${accent}30`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {icon}
+      </div>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: accent, letterSpacing: '0.1em' }}>
+        {label}
+      </span>
     </div>
   )
 }
 
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 7, padding: '8px 11px', color: '#c8d6e5',
-  fontSize: 13, outline: 'none', width: '100%', boxSizing: 'border-box',
-  fontFamily: 'inherit', transition: 'border-color 0.15s',
+const card: React.CSSProperties = {
+  background: 'var(--bg-surface)', border: '1px solid var(--border)',
+  borderRadius: 16, padding: '22px 24px',
 }
 
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor: 'pointer',
-  appearance: 'none' as const,
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233d5068' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 28,
+function focusIn(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+  e.target.style.borderColor = 'var(--accent-cyan)'
+  e.target.style.boxShadow = '0 0 0 3px var(--accent-cyan-dim)'
+}
+function focusOut(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
+  e.target.style.borderColor = 'var(--border)'
+  e.target.style.boxShadow = 'none'
 }
 
 export default function AssetEditPanel({ asset, canEdit, performanceScore, performanceLabel, performanceNotes }: Props) {
@@ -93,375 +129,443 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
 
-  // Form state mirrors the asset fields
   const [form, setForm] = useState({
-    name: asset.name,
-    location: asset.location ?? '',
-    serialNumber: asset.serialNumber ?? '',
-    status: asset.status,
+    name: asset.name, location: asset.location ?? '',
+    serialNumber: asset.serialNumber ?? '', status: asset.status,
     notes: asset.notes ?? '',
-    ramGb: asset.ramGb?.toString() ?? '',
-    storageType: asset.storageType ?? '',
-    storageGb: asset.storageGb?.toString() ?? '',
-    cpuBrand: asset.cpuBrand ?? '',
-    cpuModel: asset.cpuModel ?? '',
-    cpuGeneration: asset.cpuGeneration?.toString() ?? '',
-    acquisitionCost: asset.acquisitionCost ?? '',
-    currentValue: asset.currentValue ?? '',
+    ramGb: asset.ramGb?.toString() ?? '', storageType: asset.storageType ?? '',
+    storageGb: asset.storageGb?.toString() ?? '', cpuBrand: asset.cpuBrand ?? '',
+    cpuModel: asset.cpuModel ?? '', cpuGeneration: asset.cpuGeneration?.toString() ?? '',
+    acquisitionCost: asset.acquisitionCost ?? '', currentValue: asset.currentValue ?? '',
     acquisitionDate: isoToDateInput(asset.acquisitionDate),
     warrantyUntil: isoToDateInput(asset.warrantyUntil),
   })
 
-  function set(key: keyof typeof form, value: string) {
-    setForm(prev => ({ ...prev, [key]: value }))
-  }
+  function set(key: keyof typeof form, value: string) { setForm(p => ({ ...p, [key]: value })) }
 
   function handleSave() {
     startTransition(async () => {
       await updateAsset(asset.id, {
-        name:          form.name || undefined,
-        location:      form.location || null,
-        serialNumber:  form.serialNumber || null,
-        status:        form.status as AssetStatus,
-        notes:         form.notes || null,
-        ramGb:         form.ramGb ? parseInt(form.ramGb) : null,
-        storageType:   form.storageType as StorageType | null || null,
-        storageGb:     form.storageGb ? parseInt(form.storageGb) : null,
-        cpuBrand:      form.cpuBrand as CpuBrand | null || null,
-        cpuModel:      form.cpuModel || null,
-        cpuGeneration: form.cpuGeneration ? parseInt(form.cpuGeneration) : null,
+        name: form.name || undefined, location: form.location || null,
+        serialNumber: form.serialNumber || null, status: form.status as AssetStatus,
+        notes: form.notes || null,
+        ramGb: form.ramGb ? parseInt(form.ramGb) : null,
+        storageType: form.storageType as StorageType | null || null,
+        storageGb: form.storageGb ? parseInt(form.storageGb) : null,
+        cpuBrand: form.cpuBrand as CpuBrand | null || null,
+        cpuModel: form.cpuModel || null, cpuGeneration: form.cpuGeneration ? parseInt(form.cpuGeneration) : null,
         acquisitionCost: form.acquisitionCost ? parseFloat(form.acquisitionCost) : null,
-        currentValue:    form.currentValue ? parseFloat(form.currentValue) : null,
-        acquisitionDate: form.acquisitionDate || null,
-        warrantyUntil:   form.warrantyUntil || null,
+        currentValue: form.currentValue ? parseFloat(form.currentValue) : null,
+        acquisitionDate: form.acquisitionDate || null, warrantyUntil: form.warrantyUntil || null,
       })
-      setSaved(true)
-      setEditing(false)
-      setTimeout(() => setSaved(false), 2000)
+      setSaved(true); setEditing(false); setTimeout(() => setSaved(false), 2500)
     })
   }
-
   function handleCancel() {
-    // Reset form to original asset values
     setForm({
-      name: asset.name,
-      location: asset.location ?? '',
-      serialNumber: asset.serialNumber ?? '',
-      status: asset.status,
-      notes: asset.notes ?? '',
-      ramGb: asset.ramGb?.toString() ?? '',
-      storageType: asset.storageType ?? '',
-      storageGb: asset.storageGb?.toString() ?? '',
-      cpuBrand: asset.cpuBrand ?? '',
-      cpuModel: asset.cpuModel ?? '',
-      cpuGeneration: asset.cpuGeneration?.toString() ?? '',
-      acquisitionCost: asset.acquisitionCost ?? '',
-      currentValue: asset.currentValue ?? '',
+      name: asset.name, location: asset.location ?? '',
+      serialNumber: asset.serialNumber ?? '', status: asset.status, notes: asset.notes ?? '',
+      ramGb: asset.ramGb?.toString() ?? '', storageType: asset.storageType ?? '',
+      storageGb: asset.storageGb?.toString() ?? '', cpuBrand: asset.cpuBrand ?? '',
+      cpuModel: asset.cpuModel ?? '', cpuGeneration: asset.cpuGeneration?.toString() ?? '',
+      acquisitionCost: asset.acquisitionCost ?? '', currentValue: asset.currentValue ?? '',
       acquisitionDate: isoToDateInput(asset.acquisitionDate),
       warrantyUntil: isoToDateInput(asset.warrantyUntil),
     })
     setEditing(false)
   }
 
-  const sc = statusConfig[form.status as AssetStatus] ?? statusConfig.STOCK
+  const sc  = statusConfig[form.status as AssetStatus] ?? statusConfig.STOCK
+  const pc  = performanceLabel ? perfConfig[performanceLabel] : null
+  const cpu = form.cpuBrand ? cpuColors[form.cpuBrand] : null
+
+  // Financial derived
+  const acqVal = fmtBRL(asset.acquisitionCost)
+  const curVal = fmtBRL(asset.currentValue)
+  const deprecPct = asset.acquisitionCost && asset.currentValue
+    ? Math.round((1 - parseFloat(asset.currentValue) / parseFloat(asset.acquisitionCost)) * 100)
+    : null
+
+  const hasHardware = asset.cpuBrand || asset.cpuModel || asset.cpuGeneration || asset.ramGb || asset.storageType || asset.storageGb
+  const hasFinancial = asset.acquisitionCost || asset.currentValue || asset.acquisitionDate || asset.warrantyUntil
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-      {/* ── Section header ───────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
+      {/* ── Toolbar ──────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: 'var(--text-dim)', letterSpacing: '0.12em' }}>
           INFORMAÇÕES DO ATIVO
         </span>
-        {canEdit && !editing && (
-          <button
-            onClick={() => setEditing(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '6px 12px', borderRadius: 7,
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)',
-              color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
-              cursor: 'pointer', transition: 'all 0.12s',
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {saved && !editing && (
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Check size={11} /> Salvo!
+            </span>
+          )}
+          {canEdit && !editing && (
+            <button onClick={() => setEditing(true)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 8,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)',
+              color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s',
             }}
-            onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'rgba(0,217,184,0.1)'; t.style.borderColor = 'rgba(0,217,184,0.25)'; t.style.color = '#00d9b8' }}
-            onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'rgba(255,255,255,0.04)'; t.style.borderColor = 'rgba(255,255,255,0.09)'; t.style.color = '#8ba5c0' }}
-          >
-            <Pencil size={10} /> EDITAR
-          </button>
-        )}
-        {canEdit && editing && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={handleCancel}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: '#8ba5c0', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'var(--accent-cyan-dim)'; t.style.borderColor = 'var(--accent-cyan)'; t.style.color = 'var(--accent-cyan)' }}
+            onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'var(--bg-elevated)'; t.style.borderColor = 'var(--border-hover)'; t.style.color = 'var(--text-muted)' }}
             >
-              <X size={11} /> CANCELAR
+              <Pencil size={11} /> EDITAR
             </button>
-            <button
-              onClick={handleSave}
-              disabled={isPending}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7, background: 'rgba(0,217,184,0.15)', border: '1px solid rgba(0,217,184,0.3)', color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.6 : 1 }}
-            >
-              {isPending ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={10} />}
-              {isPending ? 'SALVANDO...' : 'SALVAR'}
-            </button>
+          )}
+          {canEdit && editing && (
+            <>
+              <button onClick={handleCancel} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 8,
+                background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)',
+                color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, cursor: 'pointer',
+              }}>
+                <X size={11} /> CANCELAR
+              </button>
+              <button onClick={handleSave} disabled={isPending} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '7px 16px', borderRadius: 8,
+                background: 'var(--accent-cyan-dim)', border: '1px solid var(--accent-cyan)',
+                color: 'var(--accent-cyan)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+                cursor: isPending ? 'not-allowed' : 'pointer', opacity: isPending ? 0.7 : 1,
+              }}>
+                {isPending ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={11} />}
+                {isPending ? 'SALVANDO...' : 'SALVAR'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          ROW 1: IDENTIFICAÇÃO (full width)
+      ════════════════════════════════════════════════════════════════════ */}
+      <div style={{ ...card, borderLeft: `3px solid var(--accent-cyan)` }}>
+        <CardHeader icon={<Tag size={14} color="var(--accent-cyan)" />} label="IDENTIFICAÇÃO" accent="var(--accent-cyan)" />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          {/* Nome */}
+          <div>
+            <FLabel>NOME DO ATIVO</FLabel>
+            {editing
+              ? <input value={form.name} onChange={e => set('name', e.target.value)} style={iS} onFocus={focusIn} onBlur={focusOut} />
+              : <FVal>{asset.name}</FVal>
+            }
           </div>
-        )}
-        {saved && !editing && (
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Check size={11} /> SALVO
-          </span>
-        )}
-      </div>
 
-      {/* ── Informações básicas ──────────────────────────────────────────── */}
-      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em', marginBottom: 18 }}>
-          ── IDENTIFICAÇÃO
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="NOME DO ATIVO">
-            {editing ? (
-              <input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: '#c8d6e5' }}>{asset.name}</span>
-            )}
-          </Field>
+          {/* Status */}
+          <div>
+            <FLabel>STATUS</FLabel>
+            {editing
+              ? (
+                <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...sS, color: sc.color }} onFocus={focusIn} onBlur={focusOut}>
+                  {Object.entries(statusConfig).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: sc.color, boxShadow: `0 0 6px ${sc.color}`, flexShrink: 0, display: 'inline-block' }} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: sc.color }}>{sc.label}</span>
+                </div>
+              )
+            }
+          </div>
 
-          <Field label="STATUS">
-            {editing ? (
-              <select value={form.status} onChange={e => set('status', e.target.value)} style={{ ...selectStyle, color: sc.color }}>
-                {Object.entries(statusConfig).map(([k, v]) => (
-                  <option key={k} value={k} style={{ color: '#c8d6e5', background: '#0d1422' }}>{v.label}</option>
-                ))}
-              </select>
-            ) : (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 5, background: sc.bg, border: `1px solid ${sc.border}`, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: sc.color, width: 'fit-content' }}>
-                {sc.label}
-              </span>
-            )}
-          </Field>
+          {/* Localização */}
+          <div>
+            <FLabel><MapPin size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />LOCALIZAÇÃO</FLabel>
+            {editing
+              ? <input value={form.location} onChange={e => set('location', e.target.value)} placeholder="Ex.: Sala 204 — 2º Andar" style={iS} onFocus={focusIn} onBlur={focusOut} />
+              : (asset.location ? <FVal>{asset.location}</FVal> : <FEmpty />)
+            }
+          </div>
 
-          <Field label="LOCALIZAÇÃO">
-            {editing ? (
-              <input value={form.location} onChange={e => set('location', e.target.value)} placeholder="Ex.: Sala 204 — 2º Andar"
-                style={inputStyle}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.location ? '#c8d6e5' : '#2d4060' }}>{asset.location || '—'}</span>
-            )}
-          </Field>
-
-          <Field label="Nº DE SÉRIE">
-            {editing ? (
-              <input value={form.serialNumber} onChange={e => set('serialNumber', e.target.value)} placeholder="Ex.: SN-2024-001234"
-                style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: asset.serialNumber ? '#c8d6e5' : '#2d4060' }}>{asset.serialNumber || '—'}</span>
-            )}
-          </Field>
+          {/* Nº de série */}
+          <div>
+            <FLabel><Hash size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />Nº DE SÉRIE</FLabel>
+            {editing
+              ? <input value={form.serialNumber} onChange={e => set('serialNumber', e.target.value)} placeholder="Ex.: SN-2024-001234" style={{ ...iS, fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }} onFocus={focusIn} onBlur={focusOut} />
+              : (asset.serialNumber ? <FVal mono>{asset.serialNumber}</FVal> : <FEmpty />)
+            }
+          </div>
         </div>
 
-        {/* Notes */}
-        <div style={{ marginTop: 14 }}>
-          <Field label="OBSERVAÇÕES GERAIS">
-            {editing ? (
-              <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Observações sobre o ativo…"
-                style={{ ...inputStyle, resize: 'vertical' }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.notes ? '#c8d6e5' : '#2d4060', fontStyle: asset.notes ? 'normal' : 'italic' }}>
-                {asset.notes || 'Nenhuma observação'}
-              </span>
-            )}
-          </Field>
+        {/* Observações — full width */}
+        <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid var(--border)' }}>
+          <FLabel><FileText size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />OBSERVAÇÕES GERAIS</FLabel>
+          {editing
+            ? <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} placeholder="Observações sobre o ativo…" style={{ ...iS, resize: 'vertical' } as React.CSSProperties} onFocus={focusIn} onBlur={focusOut} />
+            : (asset.notes
+                ? <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>{asset.notes}</p>
+                : <FEmpty />
+              )
+          }
         </div>
       </div>
 
-      {/* ── Hardware ─────────────────────────────────────────────────────── */}
-      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Cpu size={13} color="#3d5068" />
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
-            ── HARDWARE
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+      {/* ════════════════════════════════════════════════════════════════════
+          ROW 2: HARDWARE — 2 cols (Processador | Memória & Armazenamento)
+      ════════════════════════════════════════════════════════════════════ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
 
-          <Field label="CPU — MARCA">
-            {editing ? (
-              <select value={form.cpuBrand} onChange={e => set('cpuBrand', e.target.value)} style={selectStyle}>
-                <option value="" style={{ color: '#c8d6e5', background: '#0d1422' }}>—</option>
-                <option value="INTEL" style={{ color: '#c8d6e5', background: '#0d1422' }}>Intel</option>
-                <option value="AMD" style={{ color: '#c8d6e5', background: '#0d1422' }}>AMD</option>
-                <option value="OTHER" style={{ color: '#c8d6e5', background: '#0d1422' }}>Outro</option>
-              </select>
-            ) : (
-              <span style={{ fontSize: 13, color: asset.cpuBrand ? '#c8d6e5' : '#2d4060' }}>{asset.cpuBrand || '—'}</span>
-            )}
-          </Field>
+        {/* PROCESSADOR */}
+        <div style={{ ...card, borderLeft: '3px solid #60a5fa' }}>
+          <CardHeader icon={<Cpu size={14} color="#60a5fa" />} label="PROCESSADOR" accent="#60a5fa" />
 
-          <Field label="CPU — MODELO">
-            {editing ? (
-              <input value={form.cpuModel} onChange={e => set('cpuModel', e.target.value)} placeholder="Ex.: Core i5-10400"
-                style={inputStyle}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.cpuModel ? '#c8d6e5' : '#2d4060' }}>{asset.cpuModel || '—'}</span>
-            )}
-          </Field>
-
-          <Field label="CPU — GERAÇÃO">
-            {editing ? (
-              <input type="number" value={form.cpuGeneration} onChange={e => set('cpuGeneration', e.target.value)} placeholder="Ex.: 10"
-                style={inputStyle} min={1} max={20}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.cpuGeneration ? '#c8d6e5' : '#2d4060' }}>
-                {asset.cpuGeneration ? `${asset.cpuGeneration}ª geração` : '—'}
+          {/* CPU Brand badge */}
+          {!editing && form.cpuBrand && cpu && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '5px 12px', borderRadius: 8, marginBottom: 16,
+              background: cpu.bg, border: `1px solid ${cpu.color}30`,
+            }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 800, color: cpu.color, letterSpacing: '0.05em' }}>
+                {form.cpuBrand}
               </span>
-            )}
-          </Field>
+            </div>
+          )}
 
-          <Field label="MEMÓRIA RAM (GB)">
-            {editing ? (
-              <input type="number" value={form.ramGb} onChange={e => set('ramGb', e.target.value)} placeholder="Ex.: 16"
-                style={inputStyle} min={1}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.ramGb ? '#c8d6e5' : '#2d4060' }}>
-                {asset.ramGb ? `${asset.ramGb} GB` : '—'}
-              </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Marca (edit only) */}
+            {editing && (
+              <div>
+                <FLabel>MARCA</FLabel>
+                <select value={form.cpuBrand} onChange={e => set('cpuBrand', e.target.value)} style={sS} onFocus={focusIn} onBlur={focusOut}>
+                  <option value="">—</option>
+                  <option value="INTEL">Intel</option>
+                  <option value="AMD">AMD</option>
+                  <option value="OTHER">Outro</option>
+                </select>
+              </div>
             )}
-          </Field>
 
-          <Field label="TIPO DE ARMAZENAMENTO">
-            {editing ? (
-              <select value={form.storageType} onChange={e => set('storageType', e.target.value)} style={selectStyle}>
-                <option value="" style={{ color: '#c8d6e5', background: '#0d1422' }}>—</option>
-                <option value="HDD" style={{ color: '#c8d6e5', background: '#0d1422' }}>HDD</option>
-                <option value="SSD_SATA" style={{ color: '#c8d6e5', background: '#0d1422' }}>SSD SATA</option>
-                <option value="SSD_NVME" style={{ color: '#c8d6e5', background: '#0d1422' }}>SSD NVMe</option>
-              </select>
-            ) : (
-              <span style={{ fontSize: 13, color: asset.storageType ? '#c8d6e5' : '#2d4060' }}>
-                {asset.storageType ? asset.storageType.replace('_', ' ') : '—'}
-              </span>
-            )}
-          </Field>
+            {/* Modelo */}
+            <div>
+              <FLabel>MODELO</FLabel>
+              {editing
+                ? <input value={form.cpuModel} onChange={e => set('cpuModel', e.target.value)} placeholder="Ex.: Core i5-12400" style={iS} onFocus={focusIn} onBlur={focusOut} />
+                : (asset.cpuModel ? <FVal>{asset.cpuModel}</FVal> : <FEmpty />)
+              }
+            </div>
 
-          <Field label="CAPACIDADE (GB)">
-            {editing ? (
-              <input type="number" value={form.storageGb} onChange={e => set('storageGb', e.target.value)} placeholder="Ex.: 512"
-                style={inputStyle} min={1}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.storageGb ? '#c8d6e5' : '#2d4060' }}>
-                {asset.storageGb ? `${asset.storageGb} GB` : '—'}
-              </span>
-            )}
-          </Field>
+            {/* Geração */}
+            <div>
+              <FLabel>GERAÇÃO</FLabel>
+              {editing
+                ? <input type="number" value={form.cpuGeneration} onChange={e => set('cpuGeneration', e.target.value)} placeholder="Ex.: 12" style={iS} min={1} max={20} onFocus={focusIn} onBlur={focusOut} />
+                : (asset.cpuGeneration
+                    ? (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: '#60a5fa', lineHeight: 1 }}>{asset.cpuGeneration}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ª geração</span>
+                      </div>
+                    ) : <FEmpty />
+                  )
+              }
+            </div>
+          </div>
         </div>
 
-        {/* Performance (read-only) */}
-        {(performanceScore !== null || performanceLabel) && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Activity size={13} color="#3d5068" />
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#3d5068', letterSpacing: '0.08em' }}>
-                PERFORMANCE
-              </span>
-              {performanceLabel && (
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
-                  color: perfConfig[performanceLabel]?.color ?? '#94a3b8',
-                  padding: '2px 7px', borderRadius: 4,
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
-                }}>
-                  {performanceScore}/100 — {perfConfig[performanceLabel]?.label ?? performanceLabel}
+        {/* MEMÓRIA & ARMAZENAMENTO */}
+        <div style={{ ...card, borderLeft: '3px solid #a78bfa' }}>
+          <CardHeader icon={<HardDrive size={14} color="#a78bfa" />} label="MEMÓRIA & ARMAZENAMENTO" accent="#a78bfa" />
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* RAM */}
+            <div>
+              <FLabel><MemoryStick size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />MEMÓRIA RAM</FLabel>
+              {editing
+                ? <input type="number" value={form.ramGb} onChange={e => set('ramGb', e.target.value)} placeholder="Ex.: 16" style={iS} min={1} onFocus={focusIn} onBlur={focusOut} />
+                : (asset.ramGb
+                    ? (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: '#a78bfa', lineHeight: 1 }}>{asset.ramGb}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>GB</span>
+                      </div>
+                    ) : <FEmpty />
+                  )
+              }
+            </div>
+
+            {/* Tipo de armazenamento */}
+            <div>
+              <FLabel>TIPO DE ARMAZENAMENTO</FLabel>
+              {editing
+                ? (
+                  <select value={form.storageType} onChange={e => set('storageType', e.target.value)} style={sS} onFocus={focusIn} onBlur={focusOut}>
+                    <option value="">—</option>
+                    <option value="HDD">HDD</option>
+                    <option value="SSD_SATA">SSD SATA</option>
+                    <option value="SSD_NVME">SSD NVMe</option>
+                  </select>
+                ) : (asset.storageType
+                    ? (
+                      <span style={{
+                        fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700,
+                        color: '#a78bfa', background: 'rgba(167,139,250,0.1)',
+                        border: '1px solid rgba(167,139,250,0.2)', borderRadius: 6,
+                        padding: '3px 10px', display: 'inline-block',
+                      }}>
+                        {asset.storageType.replace('_', ' ')}
+                      </span>
+                    ) : <FEmpty />
+                  )
+            }
+            </div>
+
+            {/* Capacidade */}
+            <div>
+              <FLabel>CAPACIDADE</FLabel>
+              {editing
+                ? <input type="number" value={form.storageGb} onChange={e => set('storageGb', e.target.value)} placeholder="Ex.: 512" style={iS} min={1} onFocus={focusIn} onBlur={focusOut} />
+                : (asset.storageGb
+                    ? (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: '#a78bfa', lineHeight: 1 }}>
+                          {asset.storageGb >= 1024 ? (asset.storageGb / 1024).toFixed(1) : asset.storageGb}
+                        </span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{asset.storageGb >= 1024 ? 'TB' : 'GB'}</span>
+                      </div>
+                    ) : <FEmpty />
+                  )
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          PERFORMANCE (only if data exists)
+      ════════════════════════════════════════════════════════════════════ */}
+      {(performanceScore !== null || performanceLabel) && pc && (
+        <div style={{ ...card, borderLeft: `3px solid ${pc.color}` }}>
+          <CardHeader icon={<Activity size={14} color={pc.color} />} label="PERFORMANCE" accent={pc.color} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
+            {/* Score donut-style */}
+            <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+              <svg width="80" height="80" viewBox="0 0 80 80" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="40" cy="40" r="32" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+                <circle
+                  cx="40" cy="40" r="32" fill="none"
+                  stroke={pc.color} strokeWidth="8" strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 32}`}
+                  strokeDashoffset={`${2 * Math.PI * 32 * (1 - (performanceScore ?? 0) / 100)}`}
+                  style={{ transition: 'stroke-dashoffset 0.6s ease' }}
+                />
+              </svg>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 18, fontWeight: 800, color: pc.color, lineHeight: 1 }}>{performanceScore}</span>
+                <span style={{ fontSize: 9, color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace" }}>/100</span>
+              </div>
+            </div>
+
+            <div style={{ flex: 1 }}>
+              {/* Label chip */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 8, background: pc.bg, border: `1px solid ${pc.border}`, marginBottom: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: pc.color, boxShadow: `0 0 5px ${pc.color}`, display: 'inline-block' }} />
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: pc.color }}>
+                  {pc.label.toUpperCase()}
                 </span>
+              </div>
+
+              {/* Bar */}
+              <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{
+                  height: '100%', borderRadius: 3,
+                  width: `${performanceScore ?? 0}%`,
+                  background: `linear-gradient(90deg, ${pc.color}88, ${pc.color})`,
+                  transition: 'width 0.6s ease',
+                }} />
+              </div>
+
+              {/* Notes */}
+              {performanceNotes && (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, fontStyle: 'italic' }}>
+                  {performanceNotes}
+                </p>
               )}
             </div>
-            {performanceNotes && (
-              <p style={{ fontSize: 11, color: '#5a7a9a', marginTop: 8, fontStyle: 'italic', borderLeft: '2px solid rgba(255,255,255,0.06)', paddingLeft: 8 }}>
-                {performanceNotes}
-              </p>
-            )}
           </div>
-        )}
-      </div>
-
-      {/* ── Financeiro ───────────────────────────────────────────────────── */}
-      <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '20px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <DollarSign size={13} color="#3d5068" />
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em' }}>
-            ── FINANCEIRO
-          </span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      )}
 
-          <Field label="CUSTO DE AQUISIÇÃO (R$)">
-            {editing ? (
-              <input type="number" value={form.acquisitionCost} onChange={e => set('acquisitionCost', e.target.value)} placeholder="Ex.: 2499.90"
-                style={inputStyle} step="0.01" min={0}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.acquisitionCost ? '#c8d6e5' : '#2d4060' }}>
-                {asset.acquisitionCost ? `R$ ${parseFloat(asset.acquisitionCost).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}
-              </span>
-            )}
-          </Field>
+      {/* ════════════════════════════════════════════════════════════════════
+          FINANCEIRO
+      ════════════════════════════════════════════════════════════════════ */}
+      <div style={{ ...card, borderLeft: '3px solid #34d399' }}>
+        <CardHeader icon={<DollarSign size={14} color="#34d399" />} label="FINANCEIRO" accent="#34d399" />
 
-          <Field label="VALOR ATUAL (R$)">
-            {editing ? (
-              <input type="number" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder="Ex.: 1800.00"
-                style={inputStyle} step="0.01" min={0}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.currentValue ? '#c8d6e5' : '#2d4060' }}>
-                {asset.currentValue ? `R$ ${parseFloat(asset.currentValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}
-              </span>
-            )}
-          </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 20 }}>
+          {/* Custo de aquisição */}
+          <div>
+            <FLabel>CUSTO DE AQUISIÇÃO</FLabel>
+            {editing
+              ? <input type="number" value={form.acquisitionCost} onChange={e => set('acquisitionCost', e.target.value)} placeholder="Ex.: 2499.90" style={iS} step="0.01" min={0} onFocus={focusIn} onBlur={focusOut} />
+              : (acqVal
+                  ? <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>{acqVal}</p>
+                  : <FEmpty />
+                )
+            }
+          </div>
 
-          <Field label="DATA DE AQUISIÇÃO">
-            {editing ? (
-              <input type="date" value={form.acquisitionDate} onChange={e => set('acquisitionDate', e.target.value)}
-                style={{ ...inputStyle, colorScheme: 'dark' }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.acquisitionDate ? '#c8d6e5' : '#2d4060' }}>
-                {asset.acquisitionDate ? new Date(asset.acquisitionDate).toLocaleDateString('pt-BR') : '—'}
-              </span>
-            )}
-          </Field>
+          {/* Valor atual + depreciação */}
+          <div>
+            <FLabel>VALOR ATUAL</FLabel>
+            {editing
+              ? <input type="number" value={form.currentValue} onChange={e => set('currentValue', e.target.value)} placeholder="Ex.: 1800.00" style={iS} step="0.01" min={0} onFocus={focusIn} onBlur={focusOut} />
+              : (curVal
+                  ? (
+                    <div>
+                      <p style={{ fontSize: 18, fontWeight: 800, color: '#34d399', lineHeight: 1 }}>{curVal}</p>
+                      {deprecPct !== null && deprecPct > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+                          <TrendingDown size={11} color="#f87171" />
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#f87171' }}>
+                            {deprecPct}% depreciado
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : <FEmpty />
+                )
+            }
+          </div>
 
-          <Field label="GARANTIA ATÉ">
-            {editing ? (
-              <input type="date" value={form.warrantyUntil} onChange={e => set('warrantyUntil', e.target.value)}
-                style={{ ...inputStyle, colorScheme: 'dark' }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,217,184,0.3)' }}
-                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)' }} />
-            ) : (
-              <span style={{ fontSize: 13, color: asset.warrantyUntil ? '#c8d6e5' : '#2d4060' }}>
-                {asset.warrantyUntil ? new Date(asset.warrantyUntil).toLocaleDateString('pt-BR') : '—'}
-              </span>
-            )}
-          </Field>
+          {/* Data de aquisição */}
+          <div>
+            <FLabel><Calendar size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />DATA DE AQUISIÇÃO</FLabel>
+            {editing
+              ? <input type="date" value={form.acquisitionDate} onChange={e => set('acquisitionDate', e.target.value)} style={{ ...iS, colorScheme: 'dark' } as React.CSSProperties} onFocus={focusIn} onBlur={focusOut} />
+              : (asset.acquisitionDate ? <FVal>{fmtDate(asset.acquisitionDate)}</FVal> : <FEmpty />)
+            }
+          </div>
+
+          {/* Garantia */}
+          <div>
+            <FLabel><ShieldCheck size={9} style={{ verticalAlign: 'middle', marginRight: 4 }} />GARANTIA ATÉ</FLabel>
+            {editing
+              ? <input type="date" value={form.warrantyUntil} onChange={e => set('warrantyUntil', e.target.value)} style={{ ...iS, colorScheme: 'dark' } as React.CSSProperties} onFocus={focusIn} onBlur={focusOut} />
+              : (asset.warrantyUntil
+                  ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FVal>{fmtDate(asset.warrantyUntil)}</FVal>
+                      {isExpired(asset.warrantyUntil) && (
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: 4, padding: '2px 6px' }}>
+                          EXPIRADA
+                        </span>
+                      )}
+                    </div>
+                  ) : <FEmpty />
+                )
+            }
+          </div>
         </div>
       </div>
     </div>

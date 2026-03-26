@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/middleware'
 import { prisma } from '@/lib/db/prisma'
 import { ok, err } from '@/lib/utils/api'
-import { broadcastToUser } from '@/app/api/realtime/route'
+import { broadcastToUser } from '@/lib/realtime/clients'
 
 const VALID_STATUSES = ['OPEN', 'IN_PROGRESS', 'ON_HOLD', 'DONE', 'CANCELED']
 
@@ -41,7 +41,7 @@ export const POST = withAuth(
     const updated = await prisma.ticket.update({
       where: { id },
       data: {
-        status,
+        status: status as import('@prisma/client').TicketStatus,
         closedAt: status === 'DONE' || status === 'CANCELED' ? new Date() : null,
         // Se reabrir, limpa closedAt
         ...(status === 'OPEN' || status === 'IN_PROGRESS' ? { closedAt: null } : {}),

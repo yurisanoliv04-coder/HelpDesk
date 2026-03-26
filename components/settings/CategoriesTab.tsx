@@ -6,28 +6,13 @@ import {
   updateTicketCategory, deleteTicketCategory,
   toggleTicketCategoryActive,
 } from '@/app/(app)/settings/actions'
-import AssetsSettingsTab from './AssetsSettingsTab'
-import type { AssetCustomFieldDefData, AssetModelData } from '@/app/(app)/settings/actions'
-import type { ComputerScoringConfig } from '@/lib/scoring/computer'
-
 interface TicketCategory {
   id: string; name: string; description: string | null
   active: boolean; _count: { tickets: number }
   children: Array<{ id: string; name: string; description: string | null; active: boolean; _count: { tickets: number } }>
 }
-interface AssetCategory {
-  id: string; name: string; icon: string | null
-  active: boolean; _count: { assets: number }
-}
 interface Props {
   ticketCategories: TicketCategory[]
-  assetCategories: AssetCategory[]
-  locations: string[]
-  customFieldDefs: AssetCustomFieldDefData[]
-  assetModels: AssetModelData[]
-  departments: { id: string; name: string }[]
-  totalAssets: number
-  scoringConfig: ComputerScoringConfig
 }
 
 const iStyle: React.CSSProperties = {
@@ -55,13 +40,9 @@ function Chip({ label, color }: { label: string; color: string }) {
   )
 }
 
-const SUB_KEY = 'hd_settings_categories_sub'
 const EXPANDED_KEY = 'hd_settings_categories_expanded'
 
-export default function CategoriesTab({
-  ticketCategories, assetCategories, locations, customFieldDefs, assetModels, departments, totalAssets, scoringConfig,
-}: Props) {
-  const [sub, setSub] = useState<'chamados' | 'ativos'>('chamados')
+export default function CategoriesTab({ ticketCategories }: Props) {
   const [isPending, startTransition] = useTransition()
 
   // Expanded/collapsed per parent (default: all expanded)
@@ -70,19 +51,10 @@ export default function CategoriesTab({
   // Load persisted state from localStorage on mount
   useEffect(() => {
     try {
-      const storedSub = localStorage.getItem(SUB_KEY)
-      if (storedSub === 'chamados' || storedSub === 'ativos') setSub(storedSub)
-    } catch {}
-    try {
       const storedExpanded = localStorage.getItem(EXPANDED_KEY)
       if (storedExpanded) setExpanded(new Set(JSON.parse(storedExpanded) as string[]))
     } catch {}
   }, [])
-
-  function handleSubChange(val: 'chamados' | 'ativos') {
-    setSub(val)
-    try { localStorage.setItem(SUB_KEY, val) } catch {}
-  }
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
@@ -169,26 +141,12 @@ export default function CategoriesTab({
     })
   }
 
-  const tabBtn = (active: boolean): React.CSSProperties => ({
-    padding: '7px 18px', borderRadius: 7, fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-    background: active ? 'rgba(0,217,184,0.12)' : 'transparent',
-    border: `1px solid ${active ? 'rgba(0,217,184,0.3)' : 'rgba(255,255,255,0.07)'}`,
-    color: active ? '#00d9b8' : '#3d5068', fontFamily: "'JetBrains Mono', monospace", transition: 'all 0.1s',
-  })
-
   const allCats = ticketCategories.flatMap(c => [c, ...c.children])
   const deletingCat = allCats.find(c => c.id === deleteId)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button style={tabBtn(sub === 'chamados')} onClick={() => handleSubChange('chamados')}>Chamados</button>
-        <button style={tabBtn(sub === 'ativos')} onClick={() => handleSubChange('ativos')}>Ativos / Patrimônio</button>
-      </div>
-
-      {/* ══════════════════════════════════════ CHAMADOS ══════════════════════════════════════ */}
-      {sub === 'chamados' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Create form */}
           <div style={{ background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '18px 22px' }}>
@@ -375,21 +333,7 @@ export default function CategoriesTab({
               )
             })}
           </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════ ATIVOS ══════════════════════════════════════ */}
-      {sub === 'ativos' && (
-        <AssetsSettingsTab
-          assetCategories={assetCategories}
-          locations={locations}
-          customFieldDefs={customFieldDefs}
-          assetModels={assetModels}
-          departments={departments}
-          totalAssets={totalAssets}
-          scoringConfig={scoringConfig}
-        />
-      )}
+      </div>
     </div>
   )
 }

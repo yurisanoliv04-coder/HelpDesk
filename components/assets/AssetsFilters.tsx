@@ -200,7 +200,7 @@ export default function AssetsFilters({ locations, categories, perfCounts }: Pro
               {p.label}
               {count !== null && (
                 <span style={{
-                  fontSize: 9, color: isActive ? p.color : '#2d4060',
+                  fontSize: 9, color: isActive ? (p.color ?? '#2d4060') : '#2d4060',
                   background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '1px 5px',
                 }}>
                   {count}

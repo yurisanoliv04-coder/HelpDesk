@@ -121,6 +121,8 @@ export default function RealtimeToast({ userId }: RealtimeToastProps) {
             iconColor: '#0e7490',
           })
           playSound('new_ticket')
+          // Atualiza os dados da página atual (KPIs do dashboard, lista de chamados)
+          router.refresh()
 
         } else if (event.type === 'ticket_assigned') {
           const { ticketId, code, technicianName } = event.payload

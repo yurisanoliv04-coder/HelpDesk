@@ -11,6 +11,7 @@ interface AssignPanelProps {
   currentAssigneeId?: string | null
   technicians: Technician[]
   sharedTechs?: SharedTech[]
+  readOnly?: boolean
 }
 
 const AVATAR_COLORS = ['#0ea5e9','#8b5cf6','#f59e0b','#10b981','#f43f5e','#6366f1','#14b8a6','#f97316']
@@ -20,7 +21,7 @@ function avatarColor(name: string) {
 }
 function initials(name: string) { return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() }
 
-export default function AssignPanel({ ticketId, currentAssigneeId, technicians, sharedTechs: initialShared = [] }: AssignPanelProps) {
+export default function AssignPanel({ ticketId, currentAssigneeId, technicians, sharedTechs: initialShared = [], readOnly = false }: AssignPanelProps) {
   const router = useRouter()
   const [selectedId, setSelectedId]   = useState(currentAssigneeId ?? '')
   const [shared, setShared]           = useState<SharedTech[]>(initialShared)
@@ -83,6 +84,94 @@ export default function AssignPanel({ ticketId, currentAssigneeId, technicians, 
 
   const canAdd = selectedId && !alreadyShared && !isAssignee
 
+  const assigneeTech = technicians.find(t => t.id === currentAssigneeId)
+
+  // ── Read-only view (AUXILIAR_TI) ────────────────────────────────────────
+  if (readOnly) {
+    return (
+      <div style={{
+        background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 7,
+            background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#38bdf8" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#7a9bbc', letterSpacing: '0.06em' }}>
+            TÉCNICO RESPONSÁVEL
+          </span>
+        </div>
+
+        {/* Current assignee display */}
+        {assigneeTech ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 9,
+            padding: '9px 12px',
+            background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.18)',
+            borderRadius: 8,
+          }}>
+            <div style={{
+              width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+              background: `${avatarColor(assigneeTech.name)}22`,
+              border: `1px solid ${avatarColor(assigneeTech.name)}44`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 800,
+              color: avatarColor(assigneeTech.name),
+            }}>
+              {initials(assigneeTech.name)}
+            </div>
+            <div>
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
+                {assigneeTech.name}
+              </p>
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068', marginTop: 1 }}>
+                {assigneeTech.role === 'ADMIN' ? 'Administrador' : 'Técnico'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#3d5068', textAlign: 'center', padding: '6px 0' }}>
+            Não atribuído
+          </p>
+        )}
+
+        {/* Shared techs (read-only, no remove button) */}
+        {shared.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {shared.map(s => {
+              const color = avatarColor(s.name)
+              return (
+                <div key={s.userId} style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '5px 9px',
+                  background: `${color}0d`, border: `1px solid ${color}25`, borderRadius: 7,
+                }}>
+                  <div style={{
+                    width: 22, height: 22, borderRadius: 5,
+                    background: `${color}22`, border: `1px solid ${color}44`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 800, color,
+                  }}>
+                    {initials(s.name)}
+                  </div>
+                  <span style={{ fontSize: 12, color: '#7a9bbc' }}>{s.name}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Editable view (TECNICO / ADMIN) ─────────────────────────────────────
   return (
     <div style={{
       background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',

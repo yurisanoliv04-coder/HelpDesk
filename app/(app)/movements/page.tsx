@@ -23,6 +23,7 @@ const MAX_HIST   = 600   // max records fetched per source for merged tab
 type MvCfg = { label: string; color: string; bg: string; border: string; Icon: React.ComponentType<LucideProps> }
 
 const mvConfig: Record<string, MvCfg> = {
+  CREATED:     { label: 'Cadastro',       color: '#00d9b8', bg: 'rgba(0,217,184,0.09)',   border: 'rgba(0,217,184,0.24)',   Icon: Activity       },
   CHECK_IN:    { label: 'Check-in',       color: '#34d399', bg: 'rgba(52,211,153,0.09)',  border: 'rgba(52,211,153,0.24)',  Icon: LogIn          },
   CHECK_OUT:   { label: 'Check-out',      color: '#38bdf8', bg: 'rgba(56,189,248,0.09)',  border: 'rgba(56,189,248,0.24)',  Icon: LogOut         },
   TRANSFER:    { label: 'Transferência',  color: '#a78bfa', bg: 'rgba(167,139,250,0.09)', border: 'rgba(167,139,250,0.24)', Icon: ArrowLeftRight },
@@ -46,9 +47,13 @@ const evConfig: Record<string, MvCfg> = {
 }
 
 // ── Historico source configs ─────────────────────────────────────────────────
-const noteSourceCfg: MvCfg = { label: 'Nota adicionada', color: '#00d9b8', bg: 'rgba(0,217,184,0.09)',   border: 'rgba(0,217,184,0.24)',   Icon: StickyNote }
-const fileCfg:       MvCfg = { label: 'Arquivo enviado',  color: '#a78bfa', bg: 'rgba(167,139,250,0.09)', border: 'rgba(167,139,250,0.24)', Icon: Paperclip  }
-const fallbackCfg:   MvCfg = { label: 'Evento',           color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)',  Icon: Activity   }
+const noteSourceCfg:     MvCfg = { label: 'Nota adicionada',  color: '#00d9b8', bg: 'rgba(0,217,184,0.09)',   border: 'rgba(0,217,184,0.24)',   Icon: StickyNote }
+const fileCfg:           MvCfg = { label: 'Arquivo enviado',   color: '#a78bfa', bg: 'rgba(167,139,250,0.09)', border: 'rgba(167,139,250,0.24)', Icon: Paperclip  }
+const fallbackCfg:       MvCfg = { label: 'Evento',            color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)',  Icon: Activity   }
+const purchasePendingCfg:MvCfg = { label: 'Compra registrada', color: '#fbbf24', bg: 'rgba(251,191,36,0.09)',  border: 'rgba(251,191,36,0.24)',  Icon: Activity   }
+const purchaseRecvCfg:   MvCfg = { label: 'Compra recebida',   color: '#34d399', bg: 'rgba(52,211,153,0.09)', border: 'rgba(52,211,153,0.24)',  Icon: CheckCircle2 }
+const purchaseCancelCfg: MvCfg = { label: 'Compra cancelada',  color: '#f87171', bg: 'rgba(248,113,113,0.09)',border: 'rgba(248,113,113,0.24)', Icon: Trash2      }
+const stockMoveCfg:      MvCfg = { label: 'Movim. estoque',    color: '#38bdf8', bg: 'rgba(56,189,248,0.09)', border: 'rgba(56,189,248,0.24)',  Icon: ArrowUpDown }
 
 const roleLabel: Record<string, string> = {
   COLABORADOR: 'Colaborador', AUXILIAR_TI: 'Auxiliar TI',
@@ -270,6 +275,7 @@ export default async function MovementsPage({
     movements, assetTotal, assetTypeCounts,
     userEvents, userTotal, userEventTypeCounts,
     histNoteCountAll, histFileCountAll,
+    histPurchaseCountAll, histStockCountAll,
   ] = await Promise.all([
     prisma.assetMovement.findMany({
       where: assetWhere, orderBy: { createdAt: 'desc' },
@@ -299,13 +305,15 @@ export default async function MovementsPage({
     // For tab bar grand total (unfiltered)
     prisma.assetNote.count(),
     prisma.assetFile.count(),
+    prisma.purchase.count(),
+    prisma.categoryStockMovement.count(),
   ])
 
   const assetCountByType = Object.fromEntries(assetTypeCounts.map(c => [c.type, c._count._all]))
   const userCountByType  = Object.fromEntries(userEventTypeCounts.map(c => [c.type, c._count._all]))
   const assetGrandTotal  = Object.values(assetCountByType).reduce((a, b) => a + b, 0)
   const userGrandTotal   = Object.values(userCountByType).reduce((a, b) => a + b, 0)
-  const histGrandTotal   = assetGrandTotal + userGrandTotal + histNoteCountAll + histFileCountAll
+  const histGrandTotal   = assetGrandTotal + userGrandTotal + histNoteCountAll + histFileCountAll + histPurchaseCountAll + histStockCountAll
 
   const assetTotalPages = Math.max(1, Math.ceil(assetTotal / PAGE_SIZE))
   const userTotalPages  = Math.max(1, Math.ceil(userTotal  / PAGE_SIZE))
@@ -361,7 +369,26 @@ export default async function MovementsPage({
       ]} : {}),
     }
 
-    const [hMovs, hMovCount, hEvs, hEvCount, hNotes, hNoteCount, hFiles, hFileCount] = await Promise.all([
+    // Purchase and stock movement filters
+    const hPurchaseWhere = {
+      ...dateWhere,
+      ...(q ? { OR: [
+        { title:     { contains: q, mode: 'insensitive' as const } },
+        { supplier:  { contains: q, mode: 'insensitive' as const } },
+        { createdBy: { name: { contains: q, mode: 'insensitive' as const } } },
+      ]} : {}),
+    }
+    const hStockWhere = {
+      ...dateWhere,
+      ...(q ? { OR: [
+        { notes:    { contains: q, mode: 'insensitive' as const } },
+        { category: { name: { contains: q, mode: 'insensitive' as const } } },
+        { createdBy: { name: { contains: q, mode: 'insensitive' as const } } },
+      ]} : {}),
+    }
+
+    const [hMovs, hMovCount, hEvs, hEvCount, hNotes, hNoteCount, hFiles, hFileCount,
+           hPurchases, hPurchaseCount, hStocks, hStockCount] = await Promise.all([
       prisma.assetMovement.findMany({
         where: hMovWhere, orderBy: { createdAt: 'desc' }, take: MAX_HIST,
         include: {
@@ -396,6 +423,19 @@ export default async function MovementsPage({
         },
       }),
       prisma.assetFile.count({ where: hFileWhere }),
+      prisma.purchase.findMany({
+        where: hPurchaseWhere, orderBy: { createdAt: 'desc' }, take: MAX_HIST,
+        include: { createdBy: { select: { name: true } } },
+      }),
+      prisma.purchase.count({ where: hPurchaseWhere }),
+      prisma.categoryStockMovement.findMany({
+        where: hStockWhere, orderBy: { createdAt: 'desc' }, take: MAX_HIST,
+        include: {
+          category:  { select: { name: true } },
+          createdBy: { select: { name: true } },
+        },
+      }),
+      prisma.categoryStockMovement.count({ where: hStockWhere }),
     ])
 
     // Normalize all sources into unified HistEntry[]
@@ -444,11 +484,33 @@ export default async function MovementsPage({
         description: f.originalName,
         actorName: f.uploadedBy.name,
       })),
+      ...hPurchases.map(p => ({
+        id: `purchase-${p.id}`,
+        date: p.createdAt,
+        cfg: p.status === 'RECEIVED' ? purchaseRecvCfg : p.status === 'CANCELED' ? purchaseCancelCfg : purchasePendingCfg,
+        sourceLabel: 'Compra',
+        subject1: p.title,
+        subject2: p.supplier ?? undefined,
+        subjectHref: `/consumiveis/compras/${p.id}/editar`,
+        description: `Qtd: ${p.quantity}${p.supplier ? ` · ${p.supplier}` : ''}`,
+        actorName: p.createdBy.name,
+      })),
+      ...hStocks.map(s => ({
+        id: `stock-${s.id}`,
+        date: s.createdAt,
+        cfg: stockMoveCfg,
+        sourceLabel: 'Estoque',
+        subject1: s.category.name,
+        subject2: undefined,
+        subjectHref: `/consumiveis`,
+        description: `${s.type === 'PURCHASE' ? '+' : s.quantity > 0 ? '+' : ''}${s.quantity} un${s.notes ? ` · ${s.notes.length > 60 ? s.notes.slice(0, 60) + '…' : s.notes}` : ''}`,
+        actorName: s.createdBy.name,
+      })),
     ]
 
     // Sort by date desc, then paginate
     entries.sort((a, b) => b.date.getTime() - a.date.getTime())
-    histTotal      = hMovCount + hEvCount + hNoteCount + hFileCount
+    histTotal      = hMovCount + hEvCount + hNoteCount + hFileCount + hPurchaseCount + hStockCount
     histTotalPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE))
     histPageItems  = entries.slice(skip, skip + PAGE_SIZE)
   }
@@ -619,7 +681,24 @@ export default async function MovementsPage({
                       <span style={{ display: 'block', fontSize: 12, color: '#7a9bbc', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.asset.name}</span>
                     </Link>
                   </div>
-                  {m.type === 'UPDATE' && m.notes ? (
+                  {m.type === 'CREATED' ? (
+                    /* CREATED — exibe status inicial e localização */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#00d9b8', letterSpacing: '0.06em' }}>CADASTRO INICIAL</span>
+                        {m.toStatus && (
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068' }}>·</span>
+                        )}
+                        {m.toStatus && (() => {
+                          const sMap: Record<string, string> = { STOCK: 'Em estoque', DEPLOYED: 'Implantado', MAINTENANCE: 'Manutenção', DISCARDED: 'Descartado', LOANED: 'Emprestado' }
+                          return <span style={{ fontSize: 11, color: '#7a9bbc' }}>{sMap[m.toStatus] ?? m.toStatus}</span>
+                        })()}
+                      </div>
+                      {m.toLocation && (
+                        <span style={{ fontSize: 11, color: '#4a6580' }}>📍 {m.toLocation}</span>
+                      )}
+                    </div>
+                  ) : m.type === 'UPDATE' && m.notes ? (
                     /* UPDATE com diff detalhado */
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, overflow: 'hidden' }}>
                       {m.notes.split('\n').slice(0, 3).map((line, li) => {

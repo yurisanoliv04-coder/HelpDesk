@@ -99,7 +99,7 @@ export default function TicketHistoryPanel({ events, ticketId }: Props) {
                     <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600, color: '#7a9bbc' }}>
                       {eventLabel[ev.type] ?? ev.type}
                     </p>
-                    {payload?.description && (
+                    {payload?.description != null && (
                       <p style={{ fontSize: 11, color: '#4a6580', marginTop: 2 }}>{String(payload.description)}</p>
                     )}
                     {ev.actor && <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068', marginTop: 2 }}>{ev.actor.name}</p>}

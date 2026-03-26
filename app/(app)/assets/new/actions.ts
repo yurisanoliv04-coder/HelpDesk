@@ -45,6 +45,41 @@ export async function checkTagUnique(tag: string): Promise<boolean> {
   return !exists
 }
 
+/**
+ * Returns a price/date suggestion based on the most recent RECEIVED purchase
+ * for a category, but only if there are still "unfilled" units (i.e., fewer
+ * assets have been created since that purchase than its quantity).
+ */
+export async function getPurchaseSuggestion(categoryId: string): Promise<{
+  acquisitionCost: string   // formatted "1500,00"
+  acquisitionDate: string | null  // "YYYY-MM-DD" or null
+} | null> {
+  if (!categoryId) return null
+
+  // Most recent received purchase with a price for this category
+  const purchase = await prisma.purchase.findFirst({
+    where: { categoryId, status: 'RECEIVED', unitPrice: { not: null } },
+    orderBy: { updatedAt: 'desc' },
+    select: { quantity: true, unitPrice: true, purchaseDate: true, updatedAt: true },
+  })
+  if (!purchase?.unitPrice) return null
+
+  // Count assets of this category registered since the purchase was received
+  const usedSlots = await prisma.asset.count({
+    where: { categoryId, createdAt: { gte: purchase.updatedAt } },
+  })
+
+  // All purchase units already "consumed" by previously created assets
+  if (usedSlots >= purchase.quantity) return null
+
+  return {
+    acquisitionCost: Number(purchase.unitPrice).toFixed(2), // plain "15.00" — works for both number and text inputs
+    acquisitionDate: purchase.purchaseDate
+      ? purchase.purchaseDate.toISOString().split('T')[0]
+      : null,
+  }
+}
+
 export interface CreateAssetInput {
   tag: string
   name: string
@@ -158,7 +193,22 @@ export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; 
       }
     }
 
+    // Register creation movement
+    const session2 = await auth()
+    await prisma.assetMovement.create({
+      data: {
+        assetId:     asset.id,
+        type:        'CREATED',
+        actorId:     session2!.user.id,
+        toLocation:  input.location?.trim() || null,
+        toStatus:    input.status ?? 'STOCK',
+        notes:       input.notes?.trim() || null,
+      },
+    })
+
     revalidatePath('/assets')
+    revalidatePath('/consumiveis')
+    revalidatePath('/movements')
     return { ok: true, id: asset.id }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro desconhecido'

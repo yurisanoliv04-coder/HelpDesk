@@ -95,7 +95,9 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
 
   if (!ticket) notFound()
 
-  const isTI = ['TECNICO', 'ADMIN', 'AUXILIAR_TI'].includes(session?.user.role ?? '')
+  const isTI       = ['TECNICO', 'ADMIN', 'AUXILIAR_TI'].includes(session?.user.role ?? '')
+  const isAuxiliar = session?.user.role === 'AUXILIAR_TI'
+  const canEdit    = ['TECNICO', 'ADMIN'].includes(session?.user.role ?? '')
   const isOwner = ticket.requesterId === session?.user.id || ticket.openedById === session?.user.id
   if (!isOwner && !isTI) redirect('/tickets')
 
@@ -396,47 +398,57 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                 currentAssigneeId={ticket.assigneeId}
                 technicians={technicians}
                 sharedTechs={collaboratorsList}
+                readOnly={isAuxiliar}
               />
-              {!isClosed && <StatusPanel ticketId={id} currentStatus={ticket.status} />}
-              <SolutionPanel
-                ticketId={id}
-                solutions={ticket.solutions.map(s => ({
-                  id: s.id, title: s.title, body: s.body,
-                  createdBy: { name: s.createdBy.name },
-                  createdAt: s.createdAt.toISOString(),
-                }))}
-              />
-              {ticket.category?.requiresMovement && (
-                <TicketAssetActionsPanel
+              {(!isClosed || isAuxiliar) && (
+                <StatusPanel
                   ticketId={id}
-                  requesterId={ticket.requesterId}
-                  requesterName={ticket.requester.name}
-                  users={allUsers}
-                  linkedAssets={ticket.movementOrders.flatMap(o =>
-                    o.items.map(item => ({
-                      orderId: o.id,
-                      assetTag: item.asset?.tag ?? '—',
-                      assetName: item.asset?.name ?? '—',
-                      action: item.action,
-                      orderStatus: o.status,
-                    }))
-                  )}
+                  currentStatus={ticket.status}
+                  readOnly={isAuxiliar}
                 />
               )}
+              {canEdit && (
+                <SolutionPanel
+                  ticketId={id}
+                  solutions={ticket.solutions.map(s => ({
+                    id: s.id, title: s.title, body: s.body,
+                    createdBy: { name: s.createdBy.name },
+                    createdAt: s.createdAt.toISOString(),
+                  }))}
+                />
+              )}
+              <TicketAssetActionsPanel
+                ticketId={id}
+                requesterId={ticket.requesterId}
+                requesterName={ticket.requester.name}
+                users={allUsers}
+                linkedAssets={ticket.movementOrders.flatMap(o =>
+                  o.items.map(item => ({
+                    orderId: o.id,
+                    assetTag: item.asset?.tag ?? '—',
+                    assetName: item.asset?.name ?? '—',
+                    action: item.action,
+                    orderStatus: o.status,
+                  }))
+                )}
+                readOnly={isAuxiliar}
+              />
             </>
           )}
 
-          {/* Histórico */}
-          <TicketHistoryPanel
-            ticketId={id}
-            events={ticket.events.map(ev => ({
-              id: ev.id,
-              type: ev.type,
-              payload: ev.payload,
-              createdAt: ev.createdAt.toISOString(),
-              actor: ev.actor ? { id: ev.actor.id, name: ev.actor.name } : null,
-            }))}
-          />
+          {/* Histórico — visível apenas para TECNICO e ADMIN */}
+          {canEdit && (
+            <TicketHistoryPanel
+              ticketId={id}
+              events={ticket.events.map(ev => ({
+                id: ev.id,
+                type: ev.type,
+                payload: ev.payload,
+                createdAt: ev.createdAt.toISOString(),
+                actor: ev.actor ? { id: ev.actor.id, name: ev.actor.name } : null,
+              }))}
+            />
+          )}
 
           {/* Ordens de movimentação */}
           {ticket.movementOrders.length > 0 && (

@@ -21,7 +21,9 @@ export function TabSaverLink({ cookieKey, cookieValue, onClick, ...props }: TabS
       {...props}
       onClick={(e) => {
         try {
-          document.cookie = `${cookieKey}=${cookieValue}; path=/; max-age=31536000; SameSite=Lax`
+          // encodeURIComponent so query-string chars (=, &, ?) survive cookie parsing
+          const encoded = cookieValue ? encodeURIComponent(cookieValue) : ''
+          document.cookie = `${cookieKey}=${encoded}; path=/; max-age=31536000; SameSite=Lax`
         } catch {}
         onClick?.(e as React.MouseEvent<HTMLAnchorElement>)
       }}

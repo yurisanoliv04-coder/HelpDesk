@@ -13,11 +13,15 @@ async function requireTI() {
 }
 
 // ─── Search available assets (STOCK or DEPLOYED) ──────────────────────────────
-export async function searchAssets(query: string) {
+export async function searchAssets(
+  query: string,
+  kind?: 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE',
+) {
   const q = query.trim()
   const assets = await prisma.asset.findMany({
     where: {
       status: { in: ['STOCK', 'DEPLOYED'] },
+      ...(kind ? { category: { kind } } : {}),
       ...(q && {
         OR: [
           { tag: { contains: q, mode: 'insensitive' } },
@@ -36,7 +40,7 @@ export async function searchAssets(query: string) {
       status: true,
       assignedToUserId: true,
       assignedToUser: { select: { name: true } },
-      category: { select: { name: true } },
+      category: { select: { name: true, kind: true } },
     },
     orderBy: { tag: 'asc' },
     take: 20,

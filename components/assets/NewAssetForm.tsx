@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createAsset, checkTagUnique, type CreateAssetInput } from '@/app/(app)/assets/new/actions'
+import { createAsset, checkTagUnique, getPurchaseSuggestion, type CreateAssetInput } from '@/app/(app)/assets/new/actions'
 import { UserSearchSelect } from './UserSearchSelect'
 import { PartSearchSelect } from './PartSearchSelect'
 import { SearchSelect } from './SearchSelect'
@@ -244,6 +244,12 @@ export default function NewAssetForm({
   const [acquisitionDate, setAcquisitionDate] = useState('')
   const [warrantyUntil,   setWarrantyUntil]   = useState('')
 
+  // Purchase auto-suggestion
+  const [purchaseSuggestion, setPurchaseSuggestion] = useState<{
+    acquisitionCost: string; acquisitionDate: string | null
+  } | null>(null)
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false)
+
   const selectedCpu     = hwCpuParts.find(p => p.id === cpuPartId)     ?? null
   const selectedRam     = hwRamParts.find(p => p.id === ramPartId)     ?? null
   const selectedStorage = hwStorageParts.find(p => p.id === storagePartId) ?? null
@@ -253,9 +259,32 @@ export default function NewAssetForm({
   const isComputer           = selectedCategory?.isComputer ?? false
   const categoryCustomFields = selectedCategory?.customFields ?? []
 
-  function handleCategoryChange(newCatId: string) {
+  // Check suggestion for the initial category when the form first mounts
+  useEffect(() => {
+    if (!categoryId) return
+    getPurchaseSuggestion(categoryId).then(suggestion => {
+      if (!suggestion) return
+      setPurchaseSuggestion(suggestion)
+      setAcquisitionCost(prev => prev || suggestion.acquisitionCost)
+      setAcquisitionDate(prev => prev || (suggestion.acquisitionDate ?? ''))
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleCategoryChange(newCatId: string) {
     setCategoryId(newCatId)
     setCustomValues({})
+    setSuggestionDismissed(false)
+    setPurchaseSuggestion(null)
+
+    if (!newCatId) return
+    const suggestion = await getPurchaseSuggestion(newCatId)
+    if (!suggestion) return
+
+    setPurchaseSuggestion(suggestion)
+    // Auto-fill only empty fields — never override what the user typed
+    if (!acquisitionCost) setAcquisitionCost(suggestion.acquisitionCost)
+    if (!acquisitionDate && suggestion.acquisitionDate) setAcquisitionDate(suggestion.acquisitionDate)
   }
 
   // Validação de unicidade de tag (debounced)
@@ -487,6 +516,43 @@ export default function NewAssetForm({
           )}
 
           <Section title="FINANCEIRO" icon="💰">
+            {/* Purchase auto-suggestion banner */}
+            {purchaseSuggestion && !suggestionDismissed && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 10, padding: '8px 12px', borderRadius: 8, marginBottom: 4,
+                background: 'rgba(251,191,36,0.07)',
+                border: '1px solid rgba(251,191,36,0.22)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>🛒</span>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                    color: '#fbbf24',
+                  }}>
+                    Preenchido com base na compra recente desta categoria
+                    <span style={{ color: '#a87a10', marginLeft: 6, fontWeight: 400 }}>
+                      — R$ {purchaseSuggestion.acquisitionCost}
+                      {purchaseSuggestion.acquisitionDate && ` · ${new Date(purchaseSuggestion.acquisitionDate + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                    </span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuggestionDismissed(true)}
+                  title="Dispensar sugestão"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#6b4c00', padding: '2px 4px', flexShrink: 0,
+                    display: 'flex', alignItems: 'center',
+                  }}
+                >
+                  <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
             <Grid2>
               <Field label="Custo de aquisição (R$)">
                 <input style={inp} type="text" inputMode="decimal" value={acquisitionCost} onChange={e => setAcquisitionCost(e.target.value)} placeholder="Ex: 3500,00" />

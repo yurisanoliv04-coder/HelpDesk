@@ -20,7 +20,7 @@ export default async function NewTicketPage() {
     prisma.ticketCategory.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, description: true, icon: true, defaultPriority: true },
+      select: { id: true, name: true, description: true, icon: true, defaultPriority: true, parentId: true },
     }),
 
     // AUXILIAR_TI → only users from their own department
@@ -79,7 +79,7 @@ export default async function NewTicketPage() {
   const backHref = isAux ? '/aux' : '/tickets'
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Breadcrumb */}
       <nav style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

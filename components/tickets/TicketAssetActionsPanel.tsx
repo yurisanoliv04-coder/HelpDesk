@@ -4,6 +4,8 @@ import { useState, useTransition, useRef, useEffect } from 'react'
 import { Search, Package, LogIn, LogOut, User, Loader2, Check, X, Plus } from 'lucide-react'
 import { searchAssets, executeTicketAssetAction } from '@/app/(app)/tickets/[id]/actions'
 
+type AssetKind = 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE'
+
 interface AssetOption {
   id: string
   tag: string
@@ -11,7 +13,7 @@ interface AssetOption {
   status: string
   assignedToUserId: string | null
   assignedToUser: { name: string } | null
-  category: { name: string } | null
+  category: { name: string; kind: AssetKind } | null
 }
 
 interface UserOption {
@@ -33,18 +35,34 @@ interface Props {
   requesterName: string
   users: UserOption[]
   linkedAssets: LinkedAsset[]
+  readOnly?: boolean
 }
 
 type Action = 'ASSIGN_ASSET' | 'REMOVE_ASSET'
+type KindFilter = 'ALL' | AssetKind
+
+const kindConfig: Record<KindFilter, { label: string; color: string }> = {
+  ALL:        { label: 'Todos',        color: '#7a9bbc' },
+  EQUIPMENT:  { label: 'Equipamentos', color: '#38bdf8' },
+  ACCESSORY:  { label: 'Acessórios',   color: '#a78bfa' },
+  DISPOSABLE: { label: 'Descartáveis', color: '#fb923c' },
+}
+
+const kindBadge: Record<AssetKind, { label: string; color: string }> = {
+  EQUIPMENT:  { label: 'Equipamento', color: '#38bdf8' },
+  ACCESSORY:  { label: 'Acessório',   color: '#a78bfa' },
+  DISPOSABLE: { label: 'Descartável', color: '#fb923c' },
+}
 
 const actionLabel: Record<string, string> = {
   ASSIGN_ASSET: 'Alocado', REMOVE_ASSET: 'Devolvido',
   SEND_MAINTENANCE: 'Manutenção', RETURN_STOCK: 'Devolvido', DISCARD_ASSET: 'Descartado',
 }
 
-export default function TicketAssetActionsPanel({ ticketId, requesterId, users, linkedAssets }: Props) {
+export default function TicketAssetActionsPanel({ ticketId, requesterId, users, linkedAssets, readOnly = false }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [query, setQuery] = useState('')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('ALL')
   const [assets, setAssets] = useState<AssetOption[]>([])
   const [searching, setSearching] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<AssetOption | null>(null)
@@ -56,11 +74,12 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
   const [isPending, startTransition] = useTransition()
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load assets when form opens
+  // Load assets when form opens or kind filter changes
   useEffect(() => {
     if (!showForm) return
-    searchAssets('').then(setAssets)
-  }, [showForm])
+    searchAssets('', kindFilter === 'ALL' ? undefined : kindFilter).then(setAssets)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, kindFilter])
 
   // Debounced asset search
   useEffect(() => {
@@ -68,17 +87,18 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
     if (searchRef.current) clearTimeout(searchRef.current)
     searchRef.current = setTimeout(async () => {
       setSearching(true)
-      try { setAssets(await searchAssets(query)) }
+      try { setAssets(await searchAssets(query, kindFilter === 'ALL' ? undefined : kindFilter)) }
       finally { setSearching(false) }
     }, 300)
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query])
+  }, [query, kindFilter])
 
   function openForm() {
     setShowForm(true)
     setSelectedAsset(null)
     setQuery('')
+    setKindFilter('ALL')
     setDone(false)
     setError(null)
   }
@@ -87,6 +107,7 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
     setShowForm(false)
     setSelectedAsset(null)
     setQuery('')
+    setKindFilter('ALL')
     setError(null)
   }
 
@@ -157,33 +178,35 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
           )}
         </div>
 
-        {!showForm ? (
-          <button
-            onClick={openForm}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '5px 11px', borderRadius: 7,
-              background: 'rgba(0,217,184,0.08)', border: '1px solid rgba(0,217,184,0.2)',
-              color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
-              cursor: 'pointer', transition: 'all 0.12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.14)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.08)' }}
-          >
-            <Plus size={11} /> Adicionar
-          </button>
-        ) : (
-          <button
-            onClick={closeForm}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 26, height: 26, borderRadius: 6,
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              color: '#3d5068', cursor: 'pointer',
-            }}
-          >
-            <X size={12} />
-          </button>
+        {!readOnly && (
+          !showForm ? (
+            <button
+              onClick={openForm}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 11px', borderRadius: 7,
+                background: 'rgba(0,217,184,0.08)', border: '1px solid rgba(0,217,184,0.2)',
+                color: '#00d9b8', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', transition: 'all 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.14)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.08)' }}
+            >
+              <Plus size={11} /> Adicionar
+            </button>
+          ) : (
+            <button
+              onClick={closeForm}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 26, height: 26, borderRadius: 6,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                color: '#3d5068', cursor: 'pointer',
+              }}
+            >
+              <X size={12} />
+            </button>
+          )
         )}
       </div>
 
@@ -251,6 +274,30 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
           {/* Asset selection */}
           {!selectedAsset ? (
             <>
+              {/* Kind filter tabs */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {(Object.keys(kindConfig) as KindFilter[]).map(k => {
+                  const cfg = kindConfig[k]
+                  const active = kindFilter === k
+                  return (
+                    <button
+                      key={k}
+                      onClick={() => setKindFilter(k)}
+                      style={{
+                        padding: '4px 10px', borderRadius: 6,
+                        background: active ? `${cfg.color}18` : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${active ? `${cfg.color}40` : 'rgba(255,255,255,0.07)'}`,
+                        color: active ? cfg.color : '#3d5068',
+                        fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: active ? 700 : 400,
+                        cursor: 'pointer', transition: 'all 0.1s',
+                      }}
+                    >
+                      {cfg.label}
+                    </button>
+                  )
+                })}
+              </div>
+
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#2d4060', display: 'flex' }}>
                   {searching ? <Loader2 size={12} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Search size={12} />}
@@ -276,36 +323,50 @@ export default function TicketAssetActionsPanel({ ticketId, requesterId, users, 
                     Nenhum ativo disponível
                   </p>
                 )}
-                {assets.map(a => (
-                  <button
-                    key={a.id}
-                    onClick={() => handleSelectAsset(a)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '7px 10px', borderRadius: 7,
-                      background: 'rgba(255,255,255,0.02)',
-                      border: '1px solid rgba(255,255,255,0.05)',
-                      cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'all 0.1s',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.06)'; e.currentTarget.style.borderColor = 'rgba(0,217,184,0.18)' }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' }}
-                  >
-                    <div style={{
-                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                      background: a.status === 'STOCK' ? '#34d399' : '#38bdf8',
-                    }} />
-                    <div style={{ flex: 1, overflow: 'hidden' }}>
-                      <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {a.tag}
-                        <span style={{ fontWeight: 400, color: '#4a6580', marginLeft: 6 }}>{a.name}</span>
-                      </p>
-                      <p style={{ fontSize: 10, color: '#3d5068', marginTop: 1 }}>
-                        {a.status === 'DEPLOYED' && a.assignedToUser ? `Alocado — ${a.assignedToUser.name}` : 'Em estoque'}
-                        {a.category ? ` · ${a.category.name}` : ''}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                {assets.map(a => {
+                  const kb = a.category?.kind ? kindBadge[a.category.kind] : null
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => handleSelectAsset(a)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '7px 10px', borderRadius: 7,
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'all 0.1s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,217,184,0.06)'; e.currentTarget.style.borderColor = 'rgba(0,217,184,0.18)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' }}
+                    >
+                      <div style={{
+                        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                        background: a.status === 'STOCK' ? '#34d399' : '#38bdf8',
+                      }} />
+                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {a.tag}
+                          <span style={{ fontWeight: 400, color: '#4a6580', marginLeft: 6 }}>{a.name}</span>
+                        </p>
+                        <p style={{ fontSize: 10, color: '#3d5068', marginTop: 1 }}>
+                          {a.status === 'DEPLOYED' && a.assignedToUser ? `Alocado — ${a.assignedToUser.name}` : 'Em estoque'}
+                          {a.category ? ` · ${a.category.name}` : ''}
+                        </p>
+                      </div>
+                      {kb && (
+                        <span style={{
+                          flexShrink: 0,
+                          fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700,
+                          color: kb.color, background: `${kb.color}12`,
+                          border: `1px solid ${kb.color}30`,
+                          borderRadius: 4, padding: '2px 6px',
+                        }}>
+                          {kb.label}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             </>
           ) : (
