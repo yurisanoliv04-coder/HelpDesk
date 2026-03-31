@@ -3,6 +3,7 @@ import './globals.css'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 import { ThemeProvider } from '@/lib/context/theme'
+import SplashScreen from '@/components/layout/SplashScreen'
 
 export const metadata: Metadata = {
   title: 'HelpDesk — Itamarathy',
@@ -99,7 +100,10 @@ export default function RootLayout({
         <style dangerouslySetInnerHTML={{ __html: THEME_CSS }} />
       </head>
       <body suppressHydrationWarning>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <SplashScreen />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )
