@@ -37,7 +37,7 @@ const perfConfig: Record<string, { label: string; color: string; track: string }
 
 // Grid columns — shared between header and rows
 // checkbox | icon | name | tag | category | assigned | location | performance | status | action | edit | menu
-const GRID = '36px 44px minmax(180px,1fr) 100px 130px 150px 130px 110px 100px 90px 28px 28px'
+const GRID = '36px 44px minmax(160px,1fr) minmax(140px,1.2fr) 100px 130px 150px 130px 110px 100px 90px 28px 28px'
 
 export default async function AssetsPage({
   searchParams,
@@ -373,6 +373,7 @@ export default async function AssetsPage({
           </div>
           <div />
           <div style={thStyle}>NOME DO ATIVO</div>
+          <div style={thStyle}>MODELO</div>
           <div style={{ ...thStyle, textAlign: 'right' as const }}>Nº</div>
           <div style={thStyle}>CATEGORIA</div>
           <div style={thStyle}>ALOCADO PARA</div>
@@ -435,20 +436,33 @@ export default async function AssetsPage({
                 </div>
               </div>
 
-              {/* Nome + modelo + serial */}
+              {/* Nome + serial */}
               <div style={{ position: 'relative', zIndex: 1, paddingRight: 12, minWidth: 0, pointerEvents: 'none' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
                   {asset.name}
                 </p>
-                {asset.model && (
-                  <p style={{ fontSize: 11, color: '#4a90d9', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {asset.model.manufacturer ? `${asset.model.manufacturer} ${asset.model.name}` : asset.model.name}
-                  </p>
-                )}
                 {asset.serialNumber && (
-                  <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', marginTop: 1 }}>
+                  <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', marginTop: 2 }}>
                     S/N: {asset.serialNumber}
                   </p>
+                )}
+              </div>
+
+              {/* Modelo */}
+              <div style={{ position: 'relative', zIndex: 1, paddingRight: 12, minWidth: 0, pointerEvents: 'none' }}>
+                {asset.model ? (
+                  <>
+                    {asset.model.manufacturer && (
+                      <p style={{ fontSize: 10, color: '#4a6580', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3, marginBottom: 1 }}>
+                        {asset.model.manufacturer}
+                      </p>
+                    )}
+                    <p style={{ fontSize: 12, fontWeight: 500, color: '#7ab3d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+                      {asset.model.name}
+                    </p>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#2d3f55' }}>—</span>
                 )}
               </div>
 
