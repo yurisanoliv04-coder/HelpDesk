@@ -15,20 +15,23 @@ const PlusIcon = () => (
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; priority?: string; q?: string }>
+  searchParams: Promise<{ filter?: string; priority?: string; q?: string; assignee?: string; requester?: string; date?: string }>
 }) {
   const session = await auth()
   const isCollaborador =
     session?.user.role === 'COLABORADOR' || session?.user.role === 'AUXILIAR_TI'
 
-  const sp     = await searchParams
-  const filter   = sp.filter ?? ''
+  const sp       = await searchParams
+  const filter   = sp.filter   ?? ''
   const priority = sp.priority ?? ''
   const q        = sp.q?.trim() ?? ''
+  const assignee  = sp.assignee  ?? ''   // userId — from TechChart click
+  const requester = sp.requester ?? ''   // userId — from search modal
+  const date      = sp.date      ?? ''   // YYYY-MM-DD — from WeeklyChart click
 
   // ── Restore last active filter from cookie (server-side redirect) ──
-  // Only when no filter/priority is explicitly set in the URL
-  if (!filter && !priority && !q) {
+  // Only when no filter/priority/search/chart-param is explicitly set in the URL
+  if (!filter && !priority && !q && !assignee && !requester && !date) {
     const cookieStore = await cookies()
     const saved = cookieStore.get('hd_tickets_filter')?.value
     if (saved && saved !== 'all') {
@@ -54,6 +57,19 @@ export default async function TicketsPage({
 
   // ── Priority filter ────────────────────────────────────────
   if (priority) where.priority = priority
+
+  // ── Assignee filter (from TechChart click) ─────────────────
+  if (assignee) where.assigneeId = assignee
+
+  // ── Requester filter (from search modal) ───────────────────
+  if (requester && !isCollaborador) where.requesterId = requester
+
+  // ── Date filter (from WeeklyChart click) ───────────────────
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const start = new Date(date + 'T00:00:00.000Z')
+    const end   = new Date(date + 'T23:59:59.999Z')
+    where.createdAt = { gte: start, lte: end }
+  }
 
   // ── Full-text search ───────────────────────────────────────
   if (q) {
@@ -106,6 +122,16 @@ export default async function TicketsPage({
     createdAt:     t.createdAt.toISOString(),
   }))
 
+  // Build active chart-filter label (assignee or date)
+  const assigneeName = assignee
+    ? (technicians.find(t => t.id === assignee)?.name ?? 'Técnico')
+    : null
+  const chartFilterLabel = assigneeName
+    ? `Técnico: ${assigneeName}`
+    : date
+    ? `Data: ${date.split('-').reverse().join('/')}`
+    : null
+
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
@@ -131,6 +157,27 @@ export default async function TicketsPage({
           <PlusIcon /> Novo chamado
         </Link>
       </div>
+
+      {/* ── Active chart filter banner ── */}
+      {chartFilterLabel && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 14px',
+          background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.2)',
+          borderRadius: 6,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8', flexShrink: 0, boxShadow: '0 0 6px rgba(56,189,248,0.6)' }} />
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#38bdf8', flex: 1 }}>
+            FILTRO ATIVO — {chartFilterLabel} · {serialized.length} resultado{serialized.length !== 1 ? 's' : ''}
+          </span>
+          <Link
+            href="/tickets"
+            style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#38bdf8', opacity: 0.6, textDecoration: 'none' }}
+          >
+            limpar ✕
+          </Link>
+        </div>
+      )}
 
       {/* ── Toolbar: search + filters ── */}
       <TicketsToolbar totalCount={serialized.length} />

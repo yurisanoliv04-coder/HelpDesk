@@ -85,7 +85,9 @@ export interface RecentMovement {
 }
 
 export async function getRecentMovements(): Promise<RecentMovement[]> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   return prisma.assetMovement.findMany({
+    where: { createdAt: { gte: sevenDaysAgo } },
     orderBy: { createdAt: 'desc' },
     take: 5,
     select: {

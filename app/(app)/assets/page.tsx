@@ -42,7 +42,7 @@ const GRID = '36px 44px minmax(180px,1fr) 100px 130px 150px 130px 110px 100px 90
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string; page?: string }>
+  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string; modelId?: string; page?: string }>
 }) {
   const session = await auth()
   const role = session?.user.role
@@ -51,7 +51,7 @@ export default async function AssetsPage({
   const sp = await searchParams
 
   // Restaura o último filtro ativo quando o usuário chega sem nenhum parâmetro
-  if (!sp.status && !sp.performance && !sp.q && !sp.location && !sp.userId && !sp.categoryId) {
+  if (!sp.status && !sp.performance && !sp.q && !sp.location && !sp.userId && !sp.categoryId && !sp.modelId) {
     const cookieStore = await cookies()
     const saved = cookieStore.get('hd_assets_filter')?.value
     if (saved) redirect(`/assets?${decodeURIComponent(saved)}`)
@@ -60,15 +60,47 @@ export default async function AssetsPage({
   const page = Math.max(1, parseInt(sp.page ?? '1', 10) || 1)
   const skip = (page - 1) * PAGE_SIZE
 
-  const where: Record<string, unknown> = {}
+  const isAdmin = role === 'ADMIN'
+
+  // Pré-busca IDs de categorias de patrimônio (exclui ACCESSORY e DISPOSABLE)
+  // groupBy não suporta filtros de relação — precisa de IDs escalares
+  const patrimonioCats = await prisma.assetCategory.findMany({
+    where: { kind: { notIn: ['ACCESSORY', 'DISPOSABLE'] } },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  })
+  const patrimonioCatIds = patrimonioCats.map(c => c.id)
+
+  // Exclui acessórios e consumíveis — esses ficam em /consumiveis
+  const where: Record<string, unknown> = {
+    categoryId: { in: patrimonioCatIds },
+  }
   if (sp.status)      where.status           = sp.status
   if (sp.performance) where.performanceLabel = sp.performance
   if (sp.location)    where.location         = sp.location
   if (sp.userId)      where.assignedToUserId = sp.userId
   if (sp.categoryId)  where.categoryId       = sp.categoryId
-  if (sp.q)           where.name             = { contains: sp.q, mode: 'insensitive' }
-
-  const isAdmin = role === 'ADMIN'
+  if (sp.modelId)     where.modelId          = sp.modelId
+  if (sp.q) {
+    const q = sp.q
+    where.OR = [
+      { name:         { contains: q, mode: 'insensitive' } },
+      { tag:          { contains: q, mode: 'insensitive' } },
+      { serialNumber: { contains: q, mode: 'insensitive' } },
+      { location:     { contains: q, mode: 'insensitive' } },
+      { notes:        { contains: q, mode: 'insensitive' } },
+      { cpuModel:     { contains: q, mode: 'insensitive' } },
+      { category:     { name: { contains: q, mode: 'insensitive' } } },
+      { assignedToUser: { name: { contains: q, mode: 'insensitive' } } },
+      { movements: { some: {
+        OR: [
+          { notes:      { contains: q, mode: 'insensitive' } },
+          { toLocation: { contains: q, mode: 'insensitive' } },
+          { actor:      { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      }}},
+    ]
+  }
 
   const [
     assets,
@@ -78,7 +110,6 @@ export default async function AssetsPage({
     filteredUser,
     activeUsers,
     locationRows,
-    assetCategories,
     deployedForChart,
     departments,
   ] = await Promise.all([
@@ -93,19 +124,18 @@ export default async function AssetsPage({
       },
     }),
     prisma.asset.count({ where }),
-    prisma.asset.groupBy({ by: ['status'],           _count: { _all: true } }),
-    prisma.asset.groupBy({ by: ['performanceLabel'], _count: { _all: true } }),
+    prisma.asset.groupBy({ by: ['status'],           where: { categoryId: { in: patrimonioCatIds } }, _count: { _all: true } }),
+    prisma.asset.groupBy({ by: ['performanceLabel'], where: { categoryId: { in: patrimonioCatIds } }, _count: { _all: true } }),
     sp.userId
       ? prisma.user.findUnique({ where: { id: sp.userId }, select: { name: true } })
       : Promise.resolve(null),
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.asset.findMany({
       select: { location: true }, distinct: ['location'],
-      where: { location: { not: null } }, orderBy: { location: 'asc' },
+      where: { categoryId: { in: patrimonioCatIds }, location: { not: null } }, orderBy: { location: 'asc' },
     }),
-    prisma.assetCategory.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.asset.findMany({
-      where: { location: { not: null } },
+      where: { categoryId: { in: patrimonioCatIds }, location: { not: null } },
       select: { performanceLabel: true, location: true },
     }),
     prisma.department.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -141,9 +171,14 @@ export default async function AssetsPage({
     .sort((a, b) => (b.BOM + b.INTERMEDIARIO + b.RUIM + b.NONE) - (a.BOM + a.INTERMEDIARIO + a.RUIM + a.NONE))
 
   // ── Active filter label ─────────────────────────────────────────────────
+  const perfLabelMap: Record<string, string> = { BOM: 'Bom', INTERMEDIARIO: 'Intermediário', RUIM: 'Ruim' }
   const activeFilterLabel = sp.userId
     ? `Ativos de ${filteredUser?.name ?? 'usuário'}`
-    : sp.location ? `Local: ${sp.location}` : null
+    : sp.location
+    ? `Local: ${sp.location}`
+    : sp.performance
+    ? `Performance: ${perfLabelMap[sp.performance] ?? sp.performance}`
+    : null
 
   // ── Stat cards (interactive) ────────────────────────────────────────────
   const activeCardKey = sp.performance === 'RUIM' ? 'RUIM' : (sp.status ?? 'ALL')
@@ -307,13 +342,15 @@ export default async function AssetsPage({
       <Suspense fallback={<div style={{ height: 72 }} />}>
         <AssetsFilters
           locations={locationRows.map(l => l.location!)}
-          categories={assetCategories}
+          categories={patrimonioCats}
           perfCounts={{ BOM: perfMap.BOM ?? 0, INTERMEDIARIO: perfMap.INTERMEDIARIO ?? 0, RUIM: perfMap.RUIM ?? 0 }}
         />
       </Suspense>
 
       {/* ── Department chart ──────────────────────────────────────────────── */}
-      <AssetsDeptChart data={deptChartData} />
+      <div style={{ height: 260 }}>
+        <AssetsDeptChart data={deptChartData} />
+      </div>
 
       {/* ── Tabela ───────────────────────────────────────────────────────── */}
       <AssetSelectionProvider

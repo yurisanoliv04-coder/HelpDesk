@@ -13,6 +13,7 @@ export type WidgetId =
   | 'calendar'             // calendário client-only
   | 'system_alerts'        // painel de alertas críticos do sistema (TI only)
   | 'divider'              // separador visual de seção
+  | 'weather'              // clima atual da cidade
 
 export interface WidgetInstance {
   instanceId: string
@@ -28,6 +29,12 @@ export interface WidgetInstance {
   config?: Record<string, unknown>
 }
 
+export interface ChartTypeOption {
+  id: string    // e.g. 'bar_h', 'bar_v', 'pie', 'line', 'area'
+  label: string // e.g. 'Barras Horizontais'
+  icon: string  // lucide icon name
+}
+
 export interface WidgetDef {
   id: WidgetId
   label: string
@@ -38,6 +45,8 @@ export interface WidgetDef {
   minW: number       // largura mínima para resize
   minH: number       // altura mínima para resize
   tiOnly: boolean
+  /** Se definido, o widget suporta múltiplos tipos de visualização */
+  chartTypes?: ChartTypeOption[]
 }
 
 // Serialized form stored in DB (Json column)

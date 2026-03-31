@@ -50,7 +50,6 @@ export default function DashboardPageClient({
   const [showManager, setShowManager] = useState(false)
   const [rowGap, setRowGap]           = useState(DEFAULT_GAP)
 
-  // ── Slots: sync fresh server-rendered content after router.refresh() ───────
   const [slots, setSlots] = useState<Record<string, React.ReactNode>>(initialSlots)
   const prevInitialSlotsRef = useRef(initialSlots)
   if (prevInitialSlotsRef.current !== initialSlots) {
@@ -65,7 +64,6 @@ export default function DashboardPageClient({
     () => (activeDashboard?.layout ?? []) as WidgetInstance[],
   )
 
-  // Load gap from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {
     setRowGap(loadGap(activeId))
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,38 +74,27 @@ export default function DashboardPageClient({
     saveGap(activeId, gap)
   }
 
-  // Snapshot do layout no momento em que o modo edição é ativado
   const editSnapshotRef = useRef<WidgetInstance[]>([])
 
-  // ── Switch dashboard ───────────────────────────────────────────────────────
   function switchDashboard(id: string) {
     const db = dashboards.find((d) => d.id === id)
     if (!db) return
     setActiveId(id)
     setOptimisticLayout((db.layout ?? []) as WidgetInstance[])
     setIsEditMode(false)
-    // Navigate with ?db=id so the server renders slots for the correct dashboard
     router.push(`?db=${id}`)
   }
 
   function handleToggleEdit() {
     setIsEditMode((prev) => {
-      if (!prev) {
-        // Entrando em modo edição — guardar snapshot do layout atual
-        editSnapshotRef.current = optimisticLayout
-      }
+      if (!prev) editSnapshotRef.current = optimisticLayout
       return !prev
     })
   }
 
   async function handleDiscard() {
     const snapshot = editSnapshotRef.current
-    // Cancelar qualquer save pendente
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current)
-      saveTimer.current = null
-    }
-    // Restaurar layout e persistir o revert no banco
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
     setOptimisticLayout(snapshot)
     setIsEditMode(false)
     setIsSaving(true)
@@ -122,7 +109,6 @@ export default function DashboardPageClient({
     }
   }
 
-  // ── Debounced save ─────────────────────────────────────────────────────────
   const scheduleLayoutSave = useCallback(
     (newLayout: WidgetInstance[]) => {
       if (saveTimer.current) clearTimeout(saveTimer.current)
@@ -141,10 +127,17 @@ export default function DashboardPageClient({
     [activeId],
   )
 
-  // ── Layout change (drag/resize handled by RGL) ─────────────────────────────
   function handleLayoutChange(newInstances: WidgetInstance[]) {
     setOptimisticLayout(newInstances)
     scheduleLayoutSave(newInstances)
+  }
+
+  function handleConfigChange(updated: WidgetInstance) {
+    setOptimisticLayout((prev) => {
+      const next = prev.map((i) => (i.instanceId === updated.instanceId ? updated : i))
+      scheduleLayoutSave(next)
+      return next
+    })
   }
 
   function handleRemove(instanceId: string) {
@@ -158,10 +151,7 @@ export default function DashboardPageClient({
   async function handleAddWidget(widgetId: WidgetInstance['widgetId']) {
     const def = WIDGET_CATALOG.find((d) => d.id === widgetId)
     if (!def) return
-
-    // Find the bottom of the current layout to append below
     const maxY = optimisticLayout.reduce((acc, i) => Math.max(acc, i.y + i.h), 0)
-
     const newInst: WidgetInstance = {
       instanceId: uid(),
       widgetId,
@@ -201,6 +191,7 @@ export default function DashboardPageClient({
         rowGap={rowGap}
         onLayoutChange={handleLayoutChange}
         onRemove={handleRemove}
+        onUpdate={handleConfigChange}
       />
 
       {showCatalog && (

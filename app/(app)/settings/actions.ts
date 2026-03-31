@@ -201,13 +201,14 @@ export async function createAssetCategory(
   name: string,
   icon: string,
   kind: 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE' = 'EQUIPMENT',
+  isComputer = false,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
     if (!name.trim()) return { ok: false, error: 'Nome é obrigatório' }
     const exists = await prisma.assetCategory.findUnique({ where: { name: name.trim() } })
     if (exists) return { ok: false, error: 'Já existe uma categoria com este nome' }
-    await prisma.assetCategory.create({ data: { name: name.trim(), icon: icon.trim() || null, kind } })
+    await prisma.assetCategory.create({ data: { name: name.trim(), icon: icon.trim() || null, kind, isComputer: kind === 'EQUIPMENT' ? isComputer : false } })
     revalidatePath('/settings')
     return { ok: true }
   } catch (e) {
@@ -222,6 +223,7 @@ export async function updateAssetCategory(
   kind: 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE' = 'EQUIPMENT',
   stockQuantity?: number,
   stockMinQty?: number,
+  isComputer?: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
@@ -234,6 +236,9 @@ export async function updateAssetCategory(
     if (kind === 'ACCESSORY' || kind === 'DISPOSABLE') {
       if (stockQuantity !== undefined) data.stockQuantity = Math.max(0, Math.floor(stockQuantity))
       if (stockMinQty  !== undefined) data.stockMinQty   = Math.max(0, Math.floor(stockMinQty))
+      data.isComputer = false  // accessories/disposables can't be computer categories
+    } else if (kind === 'EQUIPMENT' && isComputer !== undefined) {
+      data.isComputer = isComputer
     }
     await prisma.assetCategory.update({ where: { id }, data })
     revalidatePath('/settings')
@@ -819,62 +824,123 @@ export async function dismissAlertInstance(id: string): Promise<{ ok: boolean }>
 export interface AssetModelData {
   id: string
   categoryId: string
+  categoryName: string
   name: string
   manufacturer: string | null
   imageData: string | null
   specs: Record<string, unknown> | null
+  cpuPartId: string | null
+  ramPartId: string | null
+  storagePartId: string | null
+  customDefaults: Record<string, string> | null
+  assetCount: number
+  cpuPart: { id: string; brand: string; model: string; scorePoints: number } | null
+  ramPart: { id: string; brand: string; model: string; scorePoints: number } | null
+  storagePart: { id: string; brand: string; model: string; scorePoints: number } | null
 }
 
 export async function getAssetModels(): Promise<AssetModelData[]> {
   const rows = await prisma.assetModel.findMany({
-    orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
+    orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+    include: {
+      category: { select: { name: true } },
+      cpuPart: { select: { id: true, brand: true, model: true, scorePoints: true } },
+      ramPart: { select: { id: true, brand: true, model: true, scorePoints: true } },
+      storagePart: { select: { id: true, brand: true, model: true, scorePoints: true } },
+      _count: { select: { assets: true } },
+    },
   })
   return rows.map(r => ({
     id: r.id,
     categoryId: r.categoryId,
+    categoryName: r.category.name,
     name: r.name,
     manufacturer: r.manufacturer,
     imageData: r.imageData,
     specs: r.specs as Record<string, unknown> | null,
+    cpuPartId: r.cpuPartId,
+    ramPartId: r.ramPartId,
+    storagePartId: r.storagePartId,
+    customDefaults: r.customDefaults as Record<string, string> | null,
+    assetCount: r._count.assets,
+    cpuPart: r.cpuPart,
+    ramPart: r.ramPart,
+    storagePart: r.storagePart,
   }))
 }
 
+export interface CreateAssetModelPayload {
+  categoryId: string
+  name: string
+  manufacturer?: string
+  imageData?: string | null
+  cpuPartId?: string | null
+  ramPartId?: string | null
+  storagePartId?: string | null
+  customDefaults?: Record<string, string> | null
+}
+
 export async function createAssetModel(
-  categoryId: string, name: string, manufacturer: string, imageData: string | null,
-): Promise<{ ok: boolean; error?: string }> {
+  payload: CreateAssetModelPayload,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     await requireAdmin()
+    const { categoryId, name, manufacturer, imageData, cpuPartId, ramPartId, storagePartId, customDefaults } = payload
     if (!categoryId || !name.trim()) return { ok: false, error: 'Categoria e nome são obrigatórios' }
-    await prisma.assetModel.create({
+    const row = await prisma.assetModel.create({
       data: {
         categoryId,
         name: name.trim(),
-        manufacturer: manufacturer.trim() || null,
+        manufacturer: manufacturer?.trim() || null,
         imageData: imageData || null,
+        cpuPartId: cpuPartId || null,
+        ramPartId: ramPartId || null,
+        storagePartId: storagePartId || null,
+        customDefaults: customDefaults || undefined,
       },
     })
     revalidatePath('/settings')
-    return { ok: true }
+    revalidatePath('/assets/models')
+    return { ok: true, id: row.id }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
   }
 }
 
+export interface UpdateAssetModelPayload {
+  categoryId?: string
+  name?: string
+  manufacturer?: string
+  imageData?: string | null
+  cpuPartId?: string | null
+  ramPartId?: string | null
+  storagePartId?: string | null
+  customDefaults?: Record<string, string> | null
+}
+
 export async function updateAssetModel(
-  id: string, name: string, manufacturer: string, imageData: string | null,
+  id: string,
+  payload: UpdateAssetModelPayload,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
-    if (!name.trim()) return { ok: false, error: 'Nome é obrigatório' }
+    const { categoryId, name, manufacturer, imageData, cpuPartId, ramPartId, storagePartId, customDefaults } = payload
+    if (name !== undefined && !name.trim()) return { ok: false, error: 'Nome é obrigatório' }
     await prisma.assetModel.update({
       where: { id },
       data: {
-        name: name.trim(),
-        manufacturer: manufacturer.trim() || null,
+        ...(categoryId ? { categoryId } : {}),
+        ...(name !== undefined ? { name: name.trim() } : {}),
+        ...(manufacturer !== undefined ? { manufacturer: manufacturer.trim() || null } : {}),
         ...(imageData !== undefined ? { imageData } : {}),
+        ...(cpuPartId !== undefined ? { cpuPartId: cpuPartId || null } : {}),
+        ...(ramPartId !== undefined ? { ramPartId: ramPartId || null } : {}),
+        ...(storagePartId !== undefined ? { storagePartId: storagePartId || null } : {}),
+        ...(customDefaults !== undefined ? { customDefaults: customDefaults ?? undefined } : {}),
       },
     })
     revalidatePath('/settings')
+    revalidatePath('/assets/models')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
@@ -884,18 +950,44 @@ export async function updateAssetModel(
 export async function deleteAssetModel(id: string): Promise<{ ok: boolean; error?: string }> {
   try {
     await requireAdmin()
-    const model = await prisma.assetModel.findUnique({
-      where: { id },
-      include: { _count: { select: { assets: true } } },
-    })
+    const model = await prisma.assetModel.findUnique({ where: { id } })
     if (!model) return { ok: false, error: 'Modelo não encontrado' }
-    if (model._count.assets > 0)
-      return { ok: false, error: `Este modelo possui ${model._count.assets} ativo(s) vinculado(s). Desvincule-os antes de excluir.` }
+    // Desvincula ativos antes de excluir (ficam órfãos, modelId = null)
+    await prisma.asset.updateMany({ where: { modelId: id }, data: { modelId: null } })
     await prisma.assetModel.delete({ where: { id } })
     revalidatePath('/settings')
+    revalidatePath('/assets/models')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+// Returns the defaults for a specific model — used by NewAssetForm to auto-fill
+export async function getModelDefaults(modelId: string): Promise<{
+  categoryId: string
+  cpuPartId: string | null
+  ramPartId: string | null
+  storagePartId: string | null
+  customDefaults: Record<string, string> | null
+} | null> {
+  const row = await prisma.assetModel.findUnique({
+    where: { id: modelId },
+    select: {
+      categoryId: true,
+      cpuPartId: true,
+      ramPartId: true,
+      storagePartId: true,
+      customDefaults: true,
+    },
+  })
+  if (!row) return null
+  return {
+    categoryId: row.categoryId,
+    cpuPartId: row.cpuPartId,
+    ramPartId: row.ramPartId,
+    storagePartId: row.storagePartId,
+    customDefaults: row.customDefaults as Record<string, string> | null,
   }
 }
 
@@ -1105,6 +1197,93 @@ export async function saveCpuGenerationRow(
     })
     revalidatePath('/settings')
     revalidatePath('/assets')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+// ─── Category Routing: Technician Assignments ──────────────────────────────────
+
+export async function setCategoryTechnicians(
+  categoryId: string,
+  userIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    await prisma.$transaction([
+      prisma.categoryTechnician.deleteMany({ where: { categoryId } }),
+      ...userIds.map(userId =>
+        prisma.categoryTechnician.create({ data: { categoryId, userId } }),
+      ),
+    ])
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+// ─── Ticket Opening Rules ─────────────────────────────────────────────────────
+
+type OpeningRuleType = 'CONFIRMATION' | 'TIME_RESTRICTION' | 'DEPARTMENT_ONLY' | 'TEMPERATURE_CHECK' | 'WARNING_ONLY'
+
+export async function createOpeningRule(
+  categoryId: string,
+  ruleType: OpeningRuleType,
+  description: string,
+  config: Record<string, unknown>,
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    await requireAdmin()
+    if (!description.trim()) return { ok: false, error: 'Descrição é obrigatória' }
+    const rule = await prisma.ticketOpeningRule.create({
+      data: { categoryId, ruleType, description: description.trim(), config: config as object, active: true },
+    })
+    revalidatePath('/settings')
+    return { ok: true, id: rule.id }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+export async function updateOpeningRule(
+  id: string,
+  description: string,
+  config: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    if (!description.trim()) return { ok: false, error: 'Descrição é obrigatória' }
+    await prisma.ticketOpeningRule.update({
+      where: { id },
+      data: { description: description.trim(), config: config as object },
+    })
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+export async function toggleOpeningRule(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const rule = await prisma.ticketOpeningRule.findUnique({ where: { id }, select: { active: true } })
+    if (!rule) return { ok: false, error: 'Regra não encontrada' }
+    await prisma.ticketOpeningRule.update({ where: { id }, data: { active: !rule.active } })
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
+export async function deleteOpeningRule(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    await prisma.ticketOpeningRule.delete({ where: { id } })
+    revalidatePath('/settings')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }

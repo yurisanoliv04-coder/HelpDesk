@@ -15,8 +15,12 @@ const movementColor: Record<string, string> = {
   CREATED: '#a78bfa', DEFAULT: '#64748b',
 }
 
+const MAX_ITEMS = 30
+const ROW_HEIGHT = 52
+
 export default async function RecentMovementsWidget() {
   const movements = await getRecentMovements()
+  const fillerCount = Math.max(0, MAX_ITEMS - movements.length)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -29,42 +33,69 @@ export default async function RecentMovementsWidget() {
 
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
         {movements.length === 0 ? (
-          <p style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
-            — sem movimentações —
-          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 10, padding: 24 }}>
+            <span style={{ fontSize: 36, lineHeight: 1 }}>📦</span>
+            <p style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.5 }}>
+              Nada se mexeu por aqui.<br />O patrimônio agradece.
+            </p>
+          </div>
         ) : (
-          <div>
-            {movements.map((mov, i) => {
-              const color = movementColor[mov.type] ?? movementColor.DEFAULT
-              const timeAgo = formatDistanceToNow(new Date(mov.createdAt), { addSuffix: true, locale: ptBR })
-              const dest = mov.toUser?.name ?? mov.toLocation ?? '—'
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-input)' }}>
+              <div style={{ width: 7, flexShrink: 0 }} />
+              <p className="section-label" style={{ flex: 1 }}>ATIVO · OPERAÇÃO</p>
+              <p className="section-label">TEMPO</p>
+            </div>
+            <div>
+              {movements.map((mov) => {
+                const color = movementColor[mov.type] ?? movementColor.DEFAULT
+                const timeAgo = formatDistanceToNow(new Date(mov.createdAt), { addSuffix: true, locale: ptBR })
+                const dest = mov.toUser?.name ?? mov.toLocation ?? '—'
 
-              return (
-                <div
-                  key={mov.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 16px',
-                    borderBottom: i < movements.length - 1 ? '1px solid var(--border)' : 'none',
-                  }}
-                >
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 5px ${color}90` }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {mov.asset.name}
-                      <span style={{ color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}> [{mov.asset.tag}]</span>
-                    </p>
-                    <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
-                      {movementLabel[mov.type] ?? mov.type} → {dest}
+                return (
+                  <div
+                    key={mov.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '0 16px', height: ROW_HEIGHT,
+                      borderBottom: '1px solid var(--border)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 5px ${color}90` }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {mov.asset.name}
+                        <span style={{ color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}> [{mov.asset.tag}]</span>
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                        {movementLabel[mov.type] ?? mov.type} → {dest}
+                      </p>
+                    </div>
+                    <p style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
+                      {timeAgo}
                     </p>
                   </div>
-                  <p style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>
-                    {timeAgo}
+                )
+              })}
+              {Array.from({ length: fillerCount }).map((_, i) => (
+                <div
+                  key={`filler-${i}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '0 16px', height: ROW_HEIGHT,
+                    borderBottom: '1px solid var(--border)',
+                    opacity: 0.35,
+                  }}
+                >
+                  <div style={{ width: 7, flexShrink: 0 }} />
+                  <p style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-dim)' }}>
+                    — sem movimentações —
                   </p>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -87,7 +87,7 @@ export default function AssetsFilters({ locations, categories, perfCounts }: Pro
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar ativo por nome..."
+            placeholder="Buscar por nome, tag, usuário, local, histórico…"
             style={{
               width: '100%', padding: '8px 12px 8px 32px', boxSizing: 'border-box',
               background: search ? 'rgba(0,217,184,0.04)' : 'rgba(255,255,255,0.04)',

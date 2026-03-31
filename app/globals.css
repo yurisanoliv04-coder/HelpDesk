@@ -4,6 +4,7 @@
 /* ── Constantes fixas (nunca mudam com tema) ─────────────────────────── */
 :root {
   --sidebar-w:       228px;
+  --sidebar-w-collapsed: 60px;
   --status-open:     #38bdf8;
   --status-progress: #f59e0b;
   --status-hold:     #a78bfa;

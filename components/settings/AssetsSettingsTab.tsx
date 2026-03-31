@@ -720,7 +720,7 @@ export function ModelsSection({
     e.preventDefault()
     setCreateError(null)
     startTransition(async () => {
-      const r = await createAssetModel(createCatId, createName, createMfg, createImage)
+      const r = await createAssetModel({ categoryId: createCatId, name: createName, manufacturer: createMfg, imageData: createImage })
       if (r.ok) {
         setCreateName(''); setCreateMfg(''); setCreateImage(null); setCreateImagePreview(null)
         if (createFileRef.current) createFileRef.current.value = ''
@@ -745,7 +745,7 @@ export function ModelsSection({
     setEditError(null)
     startTransition(async () => {
       // Pass editImage (new compressed) if changed, else pass current imageData (null means keep existing server-side)
-      const r = await updateAssetModel(editId!, editName, editMfg, editImage)
+      const r = await updateAssetModel(editId!, { name: editName, manufacturer: editMfg, imageData: editImage })
       if (r.ok) setEditId(null)
       else setEditError(r.error ?? 'Erro')
     })

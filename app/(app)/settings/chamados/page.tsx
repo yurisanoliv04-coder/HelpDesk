@@ -3,7 +3,7 @@ import TicketSettingsTab from '@/components/settings/TicketSettingsTab'
 import SettingsSubHeader from '@/components/settings/SettingsSubHeader'
 
 export default async function ChamadosPage() {
-  const [slaPolices, ticketCategories, departments] = await Promise.all([
+  const [slaPolices, ticketCategories, departments, allTechnicians] = await Promise.all([
     prisma.slaPolicy.findMany({
       orderBy: { name: 'asc' },
       select: {
@@ -17,9 +17,21 @@ export default async function ChamadosPage() {
       orderBy: { name: 'asc' },
       select: {
         id: true, name: true, description: true, active: true, scoringPoints: true,
+        technicians: { select: { userId: true } },
+        openingRules: {
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, ruleType: true, description: true, config: true, active: true },
+        },
         children: {
           orderBy: { name: 'asc' },
-          select: { id: true, name: true, description: true, active: true, scoringPoints: true },
+          select: {
+            id: true, name: true, description: true, active: true, scoringPoints: true,
+            technicians: { select: { userId: true } },
+            openingRules: {
+              orderBy: { sortOrder: 'asc' },
+              select: { id: true, ruleType: true, description: true, config: true, active: true },
+            },
+          },
         },
       },
     }),
@@ -29,6 +41,11 @@ export default async function ChamadosPage() {
         id: true, name: true, code: true, active: true, scoringPoints: true,
         _count: { select: { users: true } },
       },
+    }),
+    prisma.user.findMany({
+      where: { active: true, role: { in: ['TECNICO', 'ADMIN', 'AUXILIAR_TI'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, role: true },
     }),
   ])
 
@@ -43,6 +60,7 @@ export default async function ChamadosPage() {
         slaPolices={slaPolices as Parameters<typeof TicketSettingsTab>[0]['slaPolices']}
         ticketCategories={ticketCategories as Parameters<typeof TicketSettingsTab>[0]['ticketCategories']}
         departments={departments as Parameters<typeof TicketSettingsTab>[0]['departments']}
+        allTechnicians={allTechnicians as Parameters<typeof TicketSettingsTab>[0]['allTechnicians']}
       />
     </div>
   )

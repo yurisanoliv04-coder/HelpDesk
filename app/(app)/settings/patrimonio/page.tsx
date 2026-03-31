@@ -51,10 +51,10 @@ export default async function PatrimonioPage() {
       ),
     },
     {
-      href: '/settings/patrimonio/modelos',
+      href: '/assets/models',
       accent: '#fbbf24',
       title: 'Modelos de Equipamento',
-      description: 'Modelos predefinidos com imagem e fabricante.',
+      description: 'Modelos predefinidos com imagem, fabricante e hardware padrão.',
       count: modelCount,
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

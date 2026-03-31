@@ -28,6 +28,7 @@ interface AssetCategory {
   icon: string | null
   active: boolean
   kind: AssetCategoryKind
+  isComputer: boolean
   stockQuantity: number
   stockMinQty: number
   _count: { assets: number }
@@ -106,6 +107,7 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
   const [aName, setAName] = useState('')
   const [aIcon, setAIcon] = useState('')
   const [aKind, setAKind] = useState<AssetCategoryKind>(lockedKind ?? 'EQUIPMENT')
+  const [aIsComputer, setAIsComputer] = useState(false)
   const [aError, setAError] = useState<string | null>(null)
   const [aSuccess, setASuccess] = useState(false)
 
@@ -114,6 +116,7 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
   const [editCatName, setEditCatName] = useState('')
   const [editCatIcon, setEditCatIcon] = useState('')
   const [editCatKind, setEditCatKind] = useState<AssetCategoryKind>('EQUIPMENT')
+  const [editCatIsComputer, setEditCatIsComputer] = useState(false)
   const [editCatStock, setEditCatStock] = useState('')
   const [editCatMinQty, setEditCatMinQty] = useState('')
   const [editCatError, setEditCatError] = useState<string | null>(null)
@@ -131,6 +134,7 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
     setEditCatName(c.name)
     setEditCatIcon(c.icon ?? '')
     setEditCatKind(c.kind ?? 'EQUIPMENT')
+    setEditCatIsComputer(c.isComputer ?? false)
     setEditCatStock(String(c.stockQuantity))
     setEditCatMinQty(String(c.stockMinQty))
     setEditCatError(null)
@@ -166,8 +170,8 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault(); setAError(null); setASuccess(false)
     startTransition(async () => {
-      const r = await createAssetCategory(aName, aIcon, aKind)
-      if (r.ok) { setAName(''); setAIcon(''); setAKind(lockedKind ?? 'EQUIPMENT'); setASuccess(true); setTimeout(() => setASuccess(false), 3000) }
+      const r = await createAssetCategory(aName, aIcon, aKind, aIsComputer)
+      if (r.ok) { setAName(''); setAIcon(''); setAKind(lockedKind ?? 'EQUIPMENT'); setAIsComputer(false); setASuccess(true); setTimeout(() => setASuccess(false), 3000) }
       else setAError(r.error ?? 'Erro')
     })
   }
@@ -178,7 +182,7 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
     const stockQty   = isStock ? parseInt(editCatStock,  10) || 0 : undefined
     const stockMin   = isStock ? parseInt(editCatMinQty, 10) || 0 : undefined
     startTransition(async () => {
-      const r = await updateAssetCategory(editCatId!, editCatName, editCatIcon, editCatKind, stockQty, stockMin)
+      const r = await updateAssetCategory(editCatId!, editCatName, editCatIcon, editCatKind, stockQty, stockMin, editCatIsComputer)
       if (r.ok) setEditCatId(null)
       else setEditCatError(r.error ?? 'Erro')
     })
@@ -240,6 +244,29 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
               <select value={aKind} onChange={e => setAKind(e.target.value as AssetCategoryKind)} style={iStyle}>
                 {KIND_OPTIONS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
               </select>
+            </div>
+          )}
+          {/* Hardware checkbox — só para EQUIPMENT */}
+          {(aKind === 'EQUIPMENT' || lockedKind === 'EQUIPMENT') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+              <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#2d4060', fontWeight: 700 }}>HARDWARE</label>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', height: 38,
+                padding: '0 12px', borderRadius: 8, userSelect: 'none',
+                background: aIsComputer ? 'rgba(129,140,248,0.08)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${aIsComputer ? 'rgba(129,140,248,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                transition: 'all 0.15s',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={aIsComputer}
+                  onChange={e => setAIsComputer(e.target.checked)}
+                  style={{ accentColor: '#818cf8', width: 13, height: 13, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 12, color: aIsComputer ? '#818cf8' : '#4a6580', whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace" }}>
+                  Tem hardware
+                </span>
+              </label>
             </div>
           )}
           <button type="submit" disabled={isPending || !aName.trim()} style={{
@@ -334,6 +361,29 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
                         </select>
                       </div>
                     )}
+                    {/* Hardware checkbox — só para EQUIPMENT */}
+                    {(editCatKind === 'EQUIPMENT' || lockedKind === 'EQUIPMENT') && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                        <label style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: '#3d5068', fontWeight: 700 }}>HARDWARE</label>
+                        <label style={{
+                          display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', height: 36,
+                          padding: '0 12px', borderRadius: 8, userSelect: 'none',
+                          background: editCatIsComputer ? 'rgba(129,140,248,0.08)' : 'rgba(255,255,255,0.04)',
+                          border: `1px solid ${editCatIsComputer ? 'rgba(129,140,248,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                          transition: 'all 0.15s',
+                        }}>
+                          <input
+                            type="checkbox"
+                            checked={editCatIsComputer}
+                            onChange={e => setEditCatIsComputer(e.target.checked)}
+                            style={{ accentColor: '#818cf8', width: 13, height: 13, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: 12, color: editCatIsComputer ? '#818cf8' : '#4a6580', whiteSpace: 'nowrap', fontFamily: "'JetBrains Mono', monospace" }}>
+                            Tem hardware
+                          </span>
+                        </label>
+                      </div>
+                    )}
                     {/* estoque — só para ACCESSORY / DISPOSABLE */}
                     {isEditStock && (<>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '0 0 80px' }}>
@@ -399,6 +449,12 @@ export default function AssetCategoriesSection({ assetCategories, lockedKind }: 
                         return kc ? <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: kc.color, background: `${kc.color}12`, border: `1px solid ${kc.color}30`, borderRadius: 4, padding: '1px 6px' }}>{kc.label}</span> : null
                       })()}
 
+                      {c.isComputer && (
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: '#818cf8', background: 'rgba(129,140,248,0.1)', border: '1px solid rgba(129,140,248,0.25)', borderRadius: 4, padding: '1px 6px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          <svg width="9" height="9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="4" y="4" width="16" height="12" rx="2" /><path strokeLinecap="round" d="M8 20h8M12 16v4" /></svg>
+                          Hardware
+                        </span>
+                      )}
                       <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fontWeight: 700, color: c.active ? '#34d399' : '#f87171', background: c.active ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)', border: `1px solid ${c.active ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`, borderRadius: 4, padding: '1px 6px' }}>
                         {c.active ? 'Ativa' : 'Inativa'}
                       </span>

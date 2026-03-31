@@ -13,6 +13,8 @@ const CreateTicketSchema = z.object({
   // AUXILIAR_TI pode abrir chamado em nome de outro usuário.
   requesterId: z.string().optional(),
   departmentId: z.string().optional(),
+  // IDs de regras de abertura já confirmadas pelo cliente (CONFIRMATION / WARNING_ONLY)
+  confirmedRuleIds: z.array(z.string()).optional(),
 })
 
 export const POST = withAuth(
@@ -29,7 +31,7 @@ export const POST = withAuth(
       return err('INVALID_INPUT', parsed.error.issues[0]?.message ?? 'Dados inválidos')
     }
 
-    const { title, description, categoryId, priority, requesterId, departmentId } = parsed.data
+    const { title, description, categoryId, priority, requesterId, departmentId, confirmedRuleIds } = parsed.data
 
     // Verificar se a categoria existe
     const category = await prisma.ticketCategory.findUnique({ where: { id: categoryId } })
@@ -37,6 +39,48 @@ export const POST = withAuth(
     if (!category.active) return err('INVALID_STATE', 'Categoria inativa')
 
     const isTI = ['TECNICO', 'ADMIN', 'AUXILIAR_TI'].includes(session.user.role)
+
+    // ── Validar regras de abertura (server-side) ──────────────────────────────
+    const activeRules = await prisma.ticketOpeningRule.findMany({
+      where: { categoryId, active: true },
+    })
+
+    if (activeRules.length > 0) {
+      const nowHour = new Date().getHours()  // UTC-3 approximated; refine with timezone lib if needed
+      const nowDay  = new Date().getDay()
+      const requesterDeptId = session.user.departmentId as string | undefined
+
+      for (const rule of activeRules) {
+        const cfg = rule.config as Record<string, unknown>
+
+        if (rule.ruleType === 'TIME_RESTRICTION') {
+          const startHour = (cfg.startHour as number) ?? 8
+          const endHour   = (cfg.endHour   as number) ?? 18
+          const days      = (cfg.days      as number[]) ?? [1, 2, 3, 4, 5]
+          if (!days.includes(nowDay) || nowHour < startHour || nowHour >= endHour) {
+            const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+            const allowed  = days.map(d => dayNames[d]).join(', ')
+            return err('RULE_VIOLATION', `Esta categoria só aceita chamados das ${startHour}h às ${endHour}h (${allowed}).`)
+          }
+        }
+
+        if (rule.ruleType === 'DEPARTMENT_ONLY') {
+          const allowed = (cfg.departmentIds as string[]) ?? []
+          if (allowed.length > 0 && !isTI && (!requesterDeptId || !allowed.includes(requesterDeptId))) {
+            const names = (cfg.departmentNames as string[]) ?? []
+            return err('RULE_VIOLATION', `Esta categoria é restrita aos departamentos: ${names.join(', ')}.`)
+          }
+        }
+
+        if (rule.ruleType === 'CONFIRMATION' || rule.ruleType === 'WARNING_ONLY') {
+          const confirmed = confirmedRuleIds ?? []
+          if (!confirmed.includes(rule.id) && rule.ruleType === 'CONFIRMATION') {
+            return err('RULE_VIOLATION', `Confirmação obrigatória: "${cfg.message ?? 'Regra não confirmada'}".`)
+          }
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Colaboradores só podem abrir chamados para si mesmos
     const finalRequesterId = isTI && requesterId ? requesterId : session.user.id

@@ -17,6 +17,7 @@ import RecentMessagesWidget    from './widgets/RecentMessagesWidget'
 import CalendarWidgetWrapper   from './widgets/CalendarWidget'
 import DividerWidget           from './widgets/DividerWidget'
 import SystemAlertsWidget     from './widgets/SystemAlertsWidget'
+import WeatherWidget          from './widgets/WeatherWidget'
 
 interface Props {
   widgetId: WidgetId
@@ -40,6 +41,7 @@ export default function WidgetRenderer({ widgetId }: Props) {
     case 'calendar':             content = <CalendarWidgetWrapper />; break
     case 'system_alerts':        content = <SystemAlertsWidget />;   break
     case 'divider':              content = <DividerWidget />;        break
+    case 'weather':              content = <WeatherWidget />;        break
     default:
       content = (
         <div style={{ padding: 20, color: 'var(--text-dim)', fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>

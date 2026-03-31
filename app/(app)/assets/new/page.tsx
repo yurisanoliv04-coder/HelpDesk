@@ -10,7 +10,7 @@ export default async function NewAssetPage() {
   const role = session?.user.role
   if (role === 'COLABORADOR' || role === 'AUXILIAR_TI') redirect('/dashboard')
 
-  const [categories, users, initialTag, departments, hwParts] = await Promise.all([
+  const [categories, users, initialTag, departments, hwParts, models] = await Promise.all([
     prisma.assetCategory.findMany({
       where: { active: true },
       orderBy: { name: 'asc' },
@@ -33,6 +33,10 @@ export default async function NewAssetPage() {
       where: { active: true },
       orderBy: [{ type: 'asc' }, { scorePoints: 'asc' }],
       select: { id: true, type: true, brand: true, model: true, scorePoints: true, notes: true },
+    }),
+    prisma.assetModel.findMany({
+      orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
+      select: { id: true, categoryId: true, name: true, manufacturer: true },
     }),
   ])
 
@@ -73,6 +77,7 @@ export default async function NewAssetPage() {
       {/* Form */}
       <NewAssetForm
         categories={categories}
+        models={models}
         users={users}
         initialTag={initialTag}
         locationOptions={locationOptions}

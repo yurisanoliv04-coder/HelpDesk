@@ -64,6 +64,7 @@ model User {
   purchasesOrdered       Purchase[]              @relation("PurchasesOrdered")
   department             Department?             @relation(fields: [departmentId], references: [id])
   dashboards             UserDashboard[]
+  categoryAssignments CategoryTechnician[] @relation("TechnicianCategories")
 
   @@map("users")
 }
@@ -147,6 +148,8 @@ model TicketCategory {
   children         TicketCategory[] @relation("CategoryTree")
   solutions        TicketSolution[]
   tickets          Ticket[]
+  technicians  CategoryTechnician[]
+  openingRules TicketOpeningRule[]
 
   @@map("ticket_categories")
 }
@@ -370,16 +373,23 @@ model AssetCustomFieldValue {
 }
 
 model AssetModel {
-  id           String        @id @default(cuid())
-  categoryId   String        @map("category_id")
-  name         String
-  manufacturer String?
-  imageData    String?       @map("image_data")
-  specs        Json?
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  category     AssetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  assets       Asset[]
+  id             String        @id @default(cuid())
+  categoryId     String        @map("category_id")
+  name           String
+  manufacturer   String?
+  imageData      String?       @map("image_data")
+  specs          Json?
+  cpuPartId      String?       @map("cpu_part_id")
+  ramPartId      String?       @map("ram_part_id")
+  storagePartId  String?       @map("storage_part_id")
+  customDefaults Json?         @map("custom_defaults")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  category       AssetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  cpuPart        HardwarePart? @relation("ModelCpuPart", fields: [cpuPartId], references: [id])
+  ramPart        HardwarePart? @relation("ModelRamPart", fields: [ramPartId], references: [id])
+  storagePart    HardwarePart? @relation("ModelStoragePart", fields: [storagePartId], references: [id])
+  assets         Asset[]
 
   @@index([categoryId])
   @@map("asset_models")
@@ -409,6 +419,9 @@ model HardwarePart {
   cpuAssets     Asset[]          @relation("AssetCpuPart")
   ramAssets     Asset[]          @relation("AssetRamPart")
   storageAssets Asset[]          @relation("AssetStoragePart")
+  cpuModels     AssetModel[]     @relation("ModelCpuPart")
+  ramModels     AssetModel[]     @relation("ModelRamPart")
+  storageModels AssetModel[]     @relation("ModelStoragePart")
 
   @@index([type])
   @@index([active])
@@ -429,6 +442,7 @@ model Asset {
   acquisitionDate   DateTime?               @map("acquisition_date")
   warrantyUntil     DateTime?               @map("warranty_until")
   notes             String?
+  quantity          Int                     @default(1)
   ramGb             Int?                    @map("ram_gb")
   storageType       StorageType?            @map("storage_type")
   storageGb         Int?                    @map("storage_gb")
@@ -762,4 +776,41 @@ model Purchase {
   @@index([categoryId])
   @@index([status])
   @@map("purchases")
+}
+
+enum OpeningRuleType {
+  CONFIRMATION
+  TIME_RESTRICTION
+  DEPARTMENT_ONLY
+  TEMPERATURE_CHECK
+  WARNING_ONLY
+}
+
+model CategoryTechnician {
+  id         String         @id @default(cuid())
+  categoryId String         @map("category_id")
+  userId     String         @map("user_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  category   TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user       User           @relation("TechnicianCategories", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, userId])
+  @@index([categoryId])
+  @@index([userId])
+  @@map("category_technicians")
+}
+
+model TicketOpeningRule {
+  id          String          @id @default(cuid())
+  categoryId  String          @map("category_id")
+  ruleType    OpeningRuleType @map("rule_type")
+  config      Json
+  description String
+  active      Boolean         @default(true)
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  category    TicketCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@map("ticket_opening_rules")
 }

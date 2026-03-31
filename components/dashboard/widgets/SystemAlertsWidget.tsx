@@ -1,22 +1,32 @@
 import { getSystemAlerts, SystemAlert } from '@/lib/dashboard/fetchers/alerts'
 import Link from 'next/link'
 
-const CATEGORY_LABELS: Record<SystemAlert['category'], string> = {
-  chamados:   'CHAMADOS',
-  patrimonio: 'PATRIMÔNIO',
-  estoque:    'ESTOQUE',
+// Visual style per category: filled = patrimônio/chamados, outlined = estoque
+const CARD_STYLE: Record<SystemAlert['category'], 'filled' | 'outlined'> = {
+  chamados:   'filled',
+  patrimonio: 'filled',
+  estoque:    'outlined',
 }
 
-const CATEGORY_COLORS: Record<SystemAlert['category'], string> = {
-  chamados:   '#60a5fa', // blue
-  patrimonio: '#f87171', // red
-  estoque:    '#fb923c', // orange
-}
-
-const SEVERITY_DOT: Record<SystemAlert['severity'], { color: string; glow: string }> = {
-  critical: { color: '#f87171', glow: 'rgba(248,113,113,0.5)' },
-  warning:  { color: '#fb923c', glow: 'rgba(251,146,60,0.5)'  },
-  info:     { color: '#60a5fa', glow: 'rgba(96,165,250,0.5)'  },
+const SEVERITY_COLOR: Record<SystemAlert['severity'], { dot: string; glow: string; bg: string; border: string }> = {
+  critical: {
+    dot:    '#f87171',
+    glow:   'rgba(248,113,113,0.55)',
+    bg:     'rgba(248,113,113,0.10)',
+    border: 'rgba(248,113,113,0.30)',
+  },
+  warning: {
+    dot:    '#fb923c',
+    glow:   'rgba(251,146,60,0.45)',
+    bg:     'rgba(251,146,60,0.08)',
+    border: 'rgba(251,146,60,0.25)',
+  },
+  info: {
+    dot:    '#60a5fa',
+    glow:   'rgba(96,165,250,0.4)',
+    bg:     'rgba(96,165,250,0.06)',
+    border: 'rgba(96,165,250,0.20)',
+  },
 }
 
 export default async function SystemAlertsWidget() {
@@ -38,73 +48,57 @@ export default async function SystemAlertsWidget() {
     )
   }
 
-  // Group by category
-  const grouped = alerts.reduce<Record<string, SystemAlert[]>>((acc, a) => {
-    if (!acc[a.category]) acc[a.category] = []
-    acc[a.category].push(a)
-    return acc
-  }, {})
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%', overflowY: 'auto' }}>
-      {Object.entries(grouped).map(([category, items]) => (
-        <div key={category} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {/* Category header */}
-          <div style={{
-            fontSize: 9, fontFamily: "'JetBrains Mono', monospace",
-            color: CATEGORY_COLORS[category as SystemAlert['category']],
-            letterSpacing: '0.08em', fontWeight: 700,
-            paddingLeft: 2, marginTop: 4,
-          }}>
-            {CATEGORY_LABELS[category as SystemAlert['category']]}
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 5,
+      height: '100%', overflowY: 'auto',
+    }}>
+      {alerts.map((alert) => {
+        const c       = SEVERITY_COLOR[alert.severity]
+        const filled  = CARD_STYLE[alert.category] === 'filled'
+
+        return (
+          <div
+            key={alert.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              borderRadius: 6, padding: '8px 12px',
+              background: filled ? c.bg : 'transparent',
+              border:     `1px solid ${filled ? c.border : 'rgba(255,255,255,0.07)'}`,
+            }}
+          >
+            {/* Severity dot */}
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              background: c.dot,
+              boxShadow: filled ? `0 0 6px ${c.glow}` : 'none',
+              display: 'inline-block',
+            }} />
+
+            {/* Message */}
+            <span style={{
+              flex: 1, fontSize: 12, lineHeight: 1.4,
+              color: filled ? 'var(--text-muted)' : 'rgba(148,163,184,0.6)',
+            }}>
+              {alert.label}
+            </span>
+
+            {/* Link */}
+            <Link
+              href={alert.href}
+              style={{
+                flexShrink: 0, fontSize: 11,
+                color: c.dot,
+                opacity: filled ? 0.85 : 0.5,
+                fontFamily: "'JetBrains Mono', monospace",
+                textDecoration: 'none',
+              }}
+            >
+              ver →
+            </Link>
           </div>
-
-          {/* Alert rows */}
-          {items.map((alert) => {
-            const dot = SEVERITY_DOT[alert.severity]
-            const isCritical = alert.severity === 'critical'
-            return (
-              <div
-                key={alert.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  background: isCritical
-                    ? 'rgba(248,113,113,0.05)'
-                    : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isCritical ? 'rgba(248,113,113,0.15)' : 'var(--border)'}`,
-                  borderRadius: 6, padding: '8px 12px',
-                }}
-              >
-                {/* Severity dot */}
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                  background: dot.color,
-                  boxShadow: isCritical ? `0 0 6px ${dot.glow}` : 'none',
-                  display: 'inline-block',
-                }} />
-
-                {/* Message */}
-                <span style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                  {alert.label}
-                </span>
-
-                {/* Link */}
-                <Link
-                  href={alert.href}
-                  style={{
-                    flexShrink: 0, fontSize: 11,
-                    color: dot.color, opacity: 0.8,
-                    fontFamily: "'JetBrains Mono', monospace",
-                    textDecoration: 'none',
-                  }}
-                >
-                  ver →
-                </Link>
-              </div>
-            )
-          })}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

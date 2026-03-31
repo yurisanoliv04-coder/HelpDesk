@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
-import Sidebar from '@/components/layout/Sidebar'
+import AppLayoutClient from '@/components/layout/AppLayoutClient'
 import RealtimeToast from '@/components/realtime/RealtimeToast'
 
 function getInitials(name: string): string {
@@ -23,23 +23,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <Sidebar
+      <AppLayoutClient
         userName={name ?? ''}
         userRole={role}
         userInitials={getInitials(name ?? 'U')}
-      />
-      <main
-        style={{
-          flex: 1,
-          marginLeft: 'var(--sidebar-w)',
-          padding: '28px 32px',
-          minHeight: '100vh',
-          background: 'var(--bg-base)',
-        }}
       >
         {children}
-      </main>
-      {/* SSE — toast de notificações em tempo real */}
+      </AppLayoutClient>
       <RealtimeToast userId={id} />
     </div>
   )

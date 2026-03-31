@@ -33,6 +33,7 @@ export interface CreateConsumívelInput {
   categoryId: string
   kind: 'ACCESSORY' | 'DISPOSABLE'
   status: AssetStatus
+  quantity?: number
   location?: string
   assignedToUserId?: string
   notes?: string
@@ -64,6 +65,7 @@ export async function createConsumível(
         name: category.name,
         categoryId: input.categoryId,
         status: input.status ?? 'STOCK',
+        quantity: input.quantity && input.quantity > 1 ? input.quantity : 1,
         location: input.location?.trim() || null,
         assignedToUserId: input.assignedToUserId || null,
         notes: input.notes?.trim() || null,

@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createAsset, checkTagUnique, getPurchaseSuggestion, type CreateAssetInput } from '@/app/(app)/assets/new/actions'
+import { getModelDefaults } from '@/app/(app)/settings/actions'
 import { UserSearchSelect } from './UserSearchSelect'
 import { PartSearchSelect } from './PartSearchSelect'
 import { SearchSelect } from './SearchSelect'
@@ -27,9 +28,17 @@ interface Category {
   customFields: CustomFieldDef[]
 }
 
+interface ModelOption {
+  id: string
+  categoryId: string
+  name: string
+  manufacturer: string | null
+}
+
 interface UserOption { id: string; name: string }
 interface Props {
   categories: Category[]
+  models: ModelOption[]
   users: UserOption[]
   initialTag: string
   locationOptions: string[]
@@ -207,7 +216,7 @@ function ScoreCard({ cpuPart, ramPart, storagePart, cpuGeneration }: {
 
 // ── Main form ──────────────────────────────────────────────────────────────────
 export default function NewAssetForm({
-  categories, users, initialTag, locationOptions,
+  categories, models, users, initialTag, locationOptions,
   hwCpuParts, hwRamParts, hwStorageParts,
 }: Props) {
   const router = useRouter()
@@ -216,6 +225,10 @@ export default function NewAssetForm({
 
   // Campos personalizados
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
+
+  // Modelo
+  const [modelId, setModelId] = useState('')
+  const [modelLoading, setModelLoading] = useState(false)
 
   // Identificação
   const [tag,              setTag]              = useState(initialTag)
@@ -274,6 +287,7 @@ export default function NewAssetForm({
   async function handleCategoryChange(newCatId: string) {
     setCategoryId(newCatId)
     setCustomValues({})
+    setModelId('')
     setSuggestionDismissed(false)
     setPurchaseSuggestion(null)
 
@@ -285,6 +299,37 @@ export default function NewAssetForm({
     // Auto-fill only empty fields — never override what the user typed
     if (!acquisitionCost) setAcquisitionCost(suggestion.acquisitionCost)
     if (!acquisitionDate && suggestion.acquisitionDate) setAcquisitionDate(suggestion.acquisitionDate)
+  }
+
+  async function handleModelChange(newModelId: string) {
+    setModelId(newModelId)
+    if (!newModelId) return
+    setModelLoading(true)
+    try {
+      const defaults = await getModelDefaults(newModelId)
+      if (!defaults) return
+      // Auto-fill category
+      if (defaults.categoryId && defaults.categoryId !== categoryId) {
+        setCategoryId(defaults.categoryId)
+        setCustomValues({})
+      }
+      // Auto-fill hardware parts (only if empty — don't override user selection)
+      if (defaults.cpuPartId && !cpuPartId) setCpuPartId(defaults.cpuPartId)
+      if (defaults.ramPartId && !ramPartId) setRamPartId(defaults.ramPartId)
+      if (defaults.storagePartId && !storagePartId) setStoragePartId(defaults.storagePartId)
+      // Auto-fill custom field defaults
+      if (defaults.customDefaults) {
+        setCustomValues(prev => {
+          const next = { ...prev }
+          for (const [k, v] of Object.entries(defaults.customDefaults!)) {
+            if (!next[k]) next[k] = v
+          }
+          return next
+        })
+      }
+    } finally {
+      setModelLoading(false)
+    }
   }
 
   // Validação de unicidade de tag (debounced)
@@ -316,6 +361,7 @@ export default function NewAssetForm({
     const cpuPart = selectedCpu
     const input: CreateAssetInput = {
       tag: tag.trim(), name: name.trim(), categoryId,
+      modelId: modelId || undefined,
       status: status as CreateAssetInput['status'],
       location: location || undefined,
       serialNumber: serialNumber || undefined,
@@ -384,6 +430,25 @@ export default function NewAssetForm({
                 />
               </Field>
             </Grid2>
+
+            {/* Model selector — appears when category has models */}
+            {(() => {
+              const catModels = models.filter(m => m.categoryId === categoryId)
+              if (catModels.length === 0) return null
+              return (
+                <Field label="Modelo" hint={modelLoading ? 'Carregando defaults…' : 'Selecionar um modelo preenche hardware e campos automaticamente'}>
+                  <SearchSelect
+                    options={[
+                      { value: '', label: '— sem modelo específico —' },
+                      ...catModels.map(m => ({ value: m.id, label: m.manufacturer ? `${m.manufacturer} ${m.name}` : m.name })),
+                    ]}
+                    value={modelId}
+                    onChange={handleModelChange}
+                    placeholder="— sem modelo específico —"
+                  />
+                </Field>
+              )
+            })()}
 
             <Field label="Nome do ativo" required>
               <input style={inp} value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Dell Latitude 5520 — João Silva" maxLength={120} required />

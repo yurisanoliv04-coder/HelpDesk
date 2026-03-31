@@ -6,7 +6,7 @@ export default async function PatrimonioCategoriasPage() {
   const assetCategories = await prisma.assetCategory.findMany({
     where: { kind: 'EQUIPMENT' },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, icon: true, active: true, kind: true, stockQuantity: true, stockMinQty: true, _count: { select: { assets: true } } },
+    select: { id: true, name: true, icon: true, active: true, kind: true, isComputer: true, stockQuantity: true, stockMinQty: true, _count: { select: { assets: true } } },
   })
 
   return (

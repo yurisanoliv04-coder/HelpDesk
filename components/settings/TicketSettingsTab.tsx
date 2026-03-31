@@ -2,6 +2,8 @@
 
 import { useState, useTransition, useCallback, useEffect } from 'react'
 import { updateCategoryScoringPoints, updateDepartmentScoringPoints } from '@/app/(app)/settings/actions'
+import CategoryRoutingSection from './CategoryRoutingSection'
+import CategoryRulesSection from './CategoryRulesSection'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +13,8 @@ interface SubCategory {
   description: string | null
   active: boolean
   scoringPoints: number
+  technicians: { userId: string }[]
+  openingRules: { id: string; ruleType: string; description: string; config: Record<string, unknown>; active: boolean }[]
 }
 
 interface TicketCategory {
@@ -20,6 +24,8 @@ interface TicketCategory {
   active: boolean
   scoringPoints: number
   children: SubCategory[]
+  technicians: { userId: string }[]
+  openingRules: { id: string; ruleType: string; description: string; config: Record<string, unknown>; active: boolean }[]
 }
 
 interface Department {
@@ -41,10 +47,17 @@ interface SlaPolicy {
   category: { name: string } | null
 }
 
+interface Technician {
+  id: string
+  name: string
+  role: string
+}
+
 interface Props {
   slaPolices: SlaPolicy[]
   ticketCategories: TicketCategory[]
   departments: Department[]
+  allTechnicians: Technician[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -134,7 +147,7 @@ function PtsInput({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function TicketSettingsTab({ slaPolices, ticketCategories, departments }: Props) {
+export default function TicketSettingsTab({ slaPolices, ticketCategories, departments, allTechnicians }: Props) {
   const [, startTransition] = useTransition()
 
   // Collapsible state: all parents expanded by default
@@ -528,6 +541,18 @@ export default function TicketSettingsTab({ slaPolices, ticketCategories, depart
           )
         })}
       </div>
+
+      {/* ── TECHNICIAN ROUTING ────────────────────────────────────── */}
+      <CategoryRoutingSection
+        categories={ticketCategories as Parameters<typeof CategoryRoutingSection>[0]['categories']}
+        allTechnicians={allTechnicians}
+      />
+
+      {/* ── OPENING RULES ─────────────────────────────────────────── */}
+      <CategoryRulesSection
+        categories={ticketCategories as Parameters<typeof CategoryRulesSection>[0]['categories']}
+        allDepartments={departments}
+      />
 
     </div>
   )

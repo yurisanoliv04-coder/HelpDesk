@@ -3,6 +3,7 @@
 import { X } from 'lucide-react'
 import { getAvailableWidgets } from '@/lib/dashboard/catalog'
 import { WidgetId, WidgetDef } from '@/lib/dashboard/types'
+import { WidgetPreview } from './WidgetPreview'
 
 // Simple icon text fallback since lucide names are strings
 function IconLabel({ name }: { name: string }) {
@@ -35,7 +36,7 @@ const GROUPS: { label: string; ids: string[] }[] = [
   },
   {
     label: 'Geral',
-    ids: ['messages_recent', 'calendar'],
+    ids: ['weather', 'messages_recent', 'calendar'],
   },
   {
     label: 'Layout',
@@ -152,12 +153,23 @@ export default function WidgetCatalogModal({ isTI, existingWidgetIds, onAdd, onC
                           }
                         }}
                       >
+                        {/* SVG preview thumbnail */}
+                        <div style={{ marginBottom: 10, borderRadius: 6, overflow: 'hidden',
+                          opacity: alreadyAdded ? 0.5 : 1 }}>
+                          <WidgetPreview widgetId={def.id} />
+                        </div>
                         <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
                           {def.label}
                         </p>
                         <p style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.4 }}>
                           {def.description}
                         </p>
+                        {def.chartTypes && (
+                          <p style={{ fontSize: 10, color: 'rgba(16,185,129,0.5)', marginTop: 6,
+                            fontFamily: "'JetBrains Mono', monospace" }}>
+                            {def.chartTypes.length} tipos de gráfico
+                          </p>
+                        )}
                         {alreadyAdded && (
                           <p style={{ fontSize: 10, color: '#10b981', marginTop: 6, fontFamily: "'JetBrains Mono', monospace" }}>
                             ✓ já adicionado

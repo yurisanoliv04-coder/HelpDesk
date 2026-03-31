@@ -13,6 +13,7 @@ import { AssetSelectAll } from '@/components/assets/AssetSelectAll'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { TabSaverLink } from '@/components/ui/TabSaverLink'
 import { UrlStateSaver } from '@/components/ui/UrlStateSaver'
+import ConsumiveisFilters from '@/components/assets/ConsumiveisFilters'
 import { Suspense } from 'react'
 
 export const dynamic = 'force-dynamic'
@@ -68,6 +69,14 @@ export default async function ConsumiveisPage({
 
   const activeKind = (sp.kind as Kind | undefined) ?? null   // null = todos
 
+  // ── pre-fetch categories (groupBy não suporta filtros de relação) ─────────
+  const assetCategories = await prisma.assetCategory.findMany({
+    where: { kind: { in: ['ACCESSORY', 'DISPOSABLE'] } },
+    select: { id: true, name: true, kind: true },
+    orderBy: { name: 'asc' },
+  })
+  const consumCatIds = assetCategories.map(c => c.id)
+
   // ── where clause ──────────────────────────────────────────────────────────
   const where: Record<string, unknown> = {
     category: {
@@ -79,7 +88,25 @@ export default async function ConsumiveisPage({
   if (sp.status)     where.status     = sp.status
   if (sp.categoryId) where.categoryId = sp.categoryId
   if (sp.location)   where.location   = sp.location
-  if (sp.q)          where.name       = { contains: sp.q, mode: 'insensitive' }
+  if (sp.q) {
+    const q = sp.q
+    where.OR = [
+      { name:         { contains: q, mode: 'insensitive' } },
+      { tag:          { contains: q, mode: 'insensitive' } },
+      { serialNumber: { contains: q, mode: 'insensitive' } },
+      { location:     { contains: q, mode: 'insensitive' } },
+      { notes:        { contains: q, mode: 'insensitive' } },
+      { category:     { name: { contains: q, mode: 'insensitive' } } },
+      { assignedToUser: { name: { contains: q, mode: 'insensitive' } } },
+      { movements: { some: {
+        OR: [
+          { notes:      { contains: q, mode: 'insensitive' } },
+          { toLocation: { contains: q, mode: 'insensitive' } },
+          { actor:      { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      }}},
+    ]
+  }
 
   const [
     assets,
@@ -87,7 +114,6 @@ export default async function ConsumiveisPage({
     statusCounts,
     accCount,
     dispCount,
-    assetCategories,
     activeUsers,
     locationRows,
     departments,
@@ -103,19 +129,15 @@ export default async function ConsumiveisPage({
       },
     }),
     prisma.asset.count({ where }),
-    // status counts no escopo dos dois tipos
+    // groupBy usa filtro escalar (categoryId) — filtros de relação não são
+    // suportados em groupBy pelo Prisma
     prisma.asset.groupBy({
       by: ['status'],
-      where: { category: { kind: { in: ['ACCESSORY', 'DISPOSABLE'] } } },
+      where: { categoryId: { in: consumCatIds } },
       _count: { _all: true },
     }),
     prisma.asset.count({ where: { category: { kind: 'ACCESSORY' } } }),
     prisma.asset.count({ where: { category: { kind: 'DISPOSABLE' } } }),
-    prisma.assetCategory.findMany({
-      where: { kind: { in: ['ACCESSORY', 'DISPOSABLE'] } },
-      select: { id: true, name: true, kind: true },
-      orderBy: { name: 'asc' },
-    }),
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.asset.findMany({
       where: { category: { kind: { in: ['ACCESSORY', 'DISPOSABLE'] } }, location: { not: null } },
@@ -341,13 +363,8 @@ export default async function ConsumiveisPage({
       {/* ── Barra de busca + filtros ───────────────────────────────────────── */}
       <Suspense fallback={null}>
         <ConsumiveisFilters
-          currentQ={sp.q}
-          currentCategoryId={sp.categoryId}
-          currentLocation={sp.location}
           categories={assetCategories}
           locations={locationRows.map(l => l.location!)}
-          activeKind={activeKind}
-          activeStatus={sp.status}
         />
       </Suspense>
 
@@ -423,9 +440,21 @@ export default async function ConsumiveisPage({
 
                 {/* Nome */}
                 <div style={{ position: 'relative', zIndex: 1, paddingRight: 12, minWidth: 0, pointerEvents: 'none' }}>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
-                    {asset.name}
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3, minWidth: 0 }}>
+                      {asset.name}
+                    </p>
+                    {asset.quantity > 1 && (
+                      <span style={{
+                        flexShrink: 0, fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 10, fontWeight: 700, color: '#fbbf24',
+                        background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.28)',
+                        padding: '1px 7px', borderRadius: 5, lineHeight: 1.6, whiteSpace: 'nowrap',
+                      }}>
+                        ×{asset.quantity}
+                      </span>
+                    )}
+                  </div>
                   {asset.serialNumber && (
                     <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', marginTop: 2 }}>
                       S/N: {asset.serialNumber}
@@ -572,95 +601,6 @@ function baseHref(
   if (key && value)  p.set(key, value)
   const qs = p.toString()
   return qs ? `/consumiveis?${qs}` : '/consumiveis'
-}
-
-// ── Filtros inline (client → server fallback com form) ───────────────────────
-function ConsumiveisFilters({
-  currentQ, currentCategoryId, currentLocation,
-  categories, locations, activeKind, activeStatus,
-}: {
-  currentQ?: string
-  currentCategoryId?: string
-  currentLocation?: string
-  categories: { id: string; name: string; kind: string }[]
-  locations: string[]
-  activeKind?: string | null
-  activeStatus?: string
-}) {
-  const params: string[] = []
-  if (activeKind)   params.push(`kind=${activeKind}`)
-  if (activeStatus) params.push(`status=${activeStatus}`)
-  const baseAction = '/consumiveis' + (params.length ? `?${params.join('&')}` : '')
-
-  return (
-    <form method="GET" action="/consumiveis" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-      {activeKind   && <input type="hidden" name="kind"   value={activeKind} />}
-      {activeStatus && <input type="hidden" name="status" value={activeStatus} />}
-
-      {/* Busca */}
-      <input
-        name="q"
-        defaultValue={currentQ}
-        placeholder="Buscar por nome…"
-        style={{
-          flex: '1 1 180px', minWidth: 140,
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 7, padding: '7px 12px', fontSize: 12, color: '#c8d6e5',
-          outline: 'none', fontFamily: 'inherit',
-        }}
-      />
-
-      {/* Categoria */}
-      <select
-        name="categoryId"
-        defaultValue={currentCategoryId ?? ''}
-        style={{
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 7, padding: '7px 10px', fontSize: 12, color: currentCategoryId ? '#c8d6e5' : '#3d5068',
-          outline: 'none', cursor: 'pointer',
-        }}
-      >
-        <option value="">Todas as categorias</option>
-        {categories.map(c => (
-          <option key={c.id} value={c.id}>{c.name}</option>
-        ))}
-      </select>
-
-      {/* Local */}
-      {locations.length > 0 && (
-        <select
-          name="location"
-          defaultValue={currentLocation ?? ''}
-          style={{
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 7, padding: '7px 10px', fontSize: 12, color: currentLocation ? '#c8d6e5' : '#3d5068',
-            outline: 'none', cursor: 'pointer',
-          }}
-        >
-          <option value="">Todos os locais</option>
-          {locations.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-      )}
-
-      <button type="submit" style={{
-        padding: '7px 16px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-        background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.25)',
-        color: '#a78bfa', fontFamily: "'JetBrains Mono', monospace",
-      }}>
-        Filtrar
-      </button>
-
-      {(currentQ || currentCategoryId || currentLocation) && (
-        <a href={baseAction} style={{
-          padding: '7px 12px', borderRadius: 7, fontSize: 11, cursor: 'pointer',
-          background: 'transparent', border: '1px solid rgba(255,255,255,0.07)',
-          color: '#3d5068', fontFamily: "'JetBrains Mono', monospace", textDecoration: 'none',
-        }}>
-          Limpar
-        </a>
-      )}
-    </form>
-  )
 }
 
 // ── Shared header cell style ─────────────────────────────────────────────────

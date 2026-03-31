@@ -3,7 +3,10 @@
 import { useRef, useState, useEffect } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  PieChart, Pie, Cell,
 } from 'recharts'
+import { useRouter } from 'next/navigation'
+import { useWidgetConfig } from '@/lib/dashboard/widget-context'
 
 export interface DeptStat {
   name: string
@@ -86,39 +89,112 @@ function CustomLegend({ payload }: { payload?: Array<{ value: string; color: str
   )
 }
 
-// ── Min pixels allocated per department bar ─────────────────────────────────
+// ── Min pixels per department column ────────────────────────────────────────
 const MIN_COL_PX = 120
+
+// ── Pie chart variant ────────────────────────────────────────────────────────
+function PieVariant({ data }: { data: DeptStat[] }) {
+  const router = useRouter()
+
+  // Aggregate totals per quality score across all locations
+  const totals = SEGS.map((s) => ({
+    name:   s.label,
+    segKey: s.key,   // BOM | INTERMEDIARIO | RUIM | NONE — used for nav
+    value:  data.reduce((sum, d) => sum + d[s.key], 0),
+    color:  s.color,
+  })).filter((s) => s.value > 0)
+
+  const grand = totals.reduce((s, t) => s + t.value, 0)
+
+  return (
+    <div style={{
+      background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
+      borderRadius: 12, padding: '20px 24px',
+      height: '100%', display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{ marginBottom: 4, flexShrink: 0 }}>
+        <p style={{
+          fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+          fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em',
+        }}>
+          DISTRIBUIÇÃO DE ATIVOS POR LOCAL
+        </p>
+        <p style={{ fontSize: 12, color: '#2d4060', marginTop: 4 }}>
+          {grand} ativo{grand !== 1 ? 's' : ''} · por qualidade
+        </p>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <PieChart width={300} height={300} style={{ margin: '0 auto', cursor: 'pointer' }}>
+          <Pie data={totals} dataKey="value" nameKey="name"
+            cx="50%" cy="50%" outerRadius="65%" innerRadius="35%"
+            stroke="rgba(8,14,26,0.8)" strokeWidth={2}
+            onClick={(entry: { name: string; segKey: string }) => {
+              if (entry.segKey === 'NONE') return
+              router.push(`/assets?performance=${encodeURIComponent(entry.segKey)}`)
+            }}>
+            {totals.map((t, i) => (
+              <Cell key={i} fill={t.color} fillOpacity={0.85} />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={{
+              background: '#0d1d30', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
+            }}
+            itemStyle={{ color: '#c8d6e5' }}
+          />
+          <Legend content={<CustomLegend />} />
+        </PieChart>
+      </div>
+    </div>
+  )
+}
 
 // ── Main Component ──────────────────────────────────────────────────────────
 export default function AssetsDeptChart({ data }: { data: DeptStat[] }) {
-  // Measure the card's usable width so we can fill it exactly,
-  // or expand beyond it (with scroll) when there are many departments.
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const [wrapperW, setWrapperW] = useState(0)
+  const config    = useWidgetConfig()
+  const chartType = (config.chartType as string | undefined) ?? 'bar_stacked'
+  const router    = useRouter()
 
+  function handleBarClick(payload: { activeLabel?: string } | null) {
+    const loc = payload?.activeLabel
+    if (loc) router.push(`/assets?location=${encodeURIComponent(loc)}`)
+  }
+
+  const wrapperRef  = useRef<HTMLDivElement>(null)
+  const chartAreaRef = useRef<HTMLDivElement>(null)
+  const [wrapperW, setWrapperW] = useState(0)
+  const [chartH,   setChartH]   = useState(250)
+
+  // Measure available width for horizontal scroll logic
   useEffect(() => {
     const el = wrapperRef.current
     if (!el) return
-    // Initial measurement
     setWrapperW(el.clientWidth)
-    // Keep in sync when the layout changes (sidebar open/close, window resize)
-    const ro = new ResizeObserver(([entry]) => {
-      setWrapperW(entry.contentRect.width)
-    })
+    const ro = new ResizeObserver(([entry]) => setWrapperW(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Measure available height so the chart fills it
+  useEffect(() => {
+    const el = chartAreaRef.current
+    if (!el) return
+    setChartH(el.clientHeight)
+    const ro = new ResizeObserver(([entry]) => setChartH(entry.contentRect.height))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
   if (data.length === 0) return null
 
+  // Pizza mode handled by separate component
+  if (chartType === 'pie') return <PieVariant data={data} />
+
   const grandTotal = data.reduce((s, d) => s + d.BOM + d.INTERMEDIARIO + d.RUIM + d.NONE, 0)
-
-  // Chart is at least as wide as the wrapper, but grows MIN_COL_PX per dept
-  const chartWidth = Math.max(wrapperW, data.length * MIN_COL_PX)
-
-  // Truncate labels adaptively so they don't overlap on the X-axis
+  const chartWidth  = Math.max(wrapperW, data.length * MIN_COL_PX)
   const maxLabelLen = data.length > 12 ? 7 : data.length > 7 ? 10 : 14
-  const chartData = data.map(d => ({
+  const chartData   = data.map(d => ({
     ...d,
     name:     d.name.length > maxLabelLen ? d.name.slice(0, maxLabelLen - 1) + '…' : d.name,
     fullName: d.name,
@@ -128,10 +204,10 @@ export default function AssetsDeptChart({ data }: { data: DeptStat[] }) {
     <div style={{
       background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
       borderRadius: 12, padding: '20px 24px',
+      height: '100%', display: 'flex', flexDirection: 'column',
     }}>
-
       {/* Header */}
-      <div style={{ marginBottom: 4 }}>
+      <div style={{ marginBottom: 4, flexShrink: 0 }}>
         <p style={{
           fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
           fontWeight: 700, color: '#3d5068', letterSpacing: '0.1em',
@@ -144,69 +220,60 @@ export default function AssetsDeptChart({ data }: { data: DeptStat[] }) {
         </p>
       </div>
 
-      {/*
-        Outer div: measures the available width (via ref) and scrolls when
-        the chart is wider than it.
-      */}
-      <div
-        ref={wrapperRef}
-        style={{
-          overflowX: chartWidth > wrapperW ? 'auto' : 'visible',
-          overflowY: 'visible',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255,255,255,0.12) transparent',
-        }}
-      >
-        {/* Only render once we have a real measurement */}
-        {wrapperW > 0 && (
-          <BarChart
-            width={chartWidth}
-            height={250}
-            data={chartData}
-            barCategoryGap="30%"
-            margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="rgba(255,255,255,0.04)"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="name"
-              tick={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 10, fill: '#3d5068',
-              }}
-              axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 9, fill: '#2d4060',
-              }}
-              axisLine={false}
-              tickLine={false}
-              allowDecimals={false}
-            />
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-            />
-            <Legend content={<CustomLegend />} />
-
-            {SEGS.map(seg => (
-              <Bar
-                key={seg.key}
-                dataKey={seg.key}
-                name={seg.label}
-                stackId="a"
-                fill={seg.color}
-                fillOpacity={0.85}
+      {/* Chart area — fills remaining height */}
+      <div ref={chartAreaRef} style={{ flex: 1, minHeight: 0 }}>
+        {/* Horizontal scroll wrapper */}
+        <div
+          ref={wrapperRef}
+          style={{
+            height: '100%',
+            overflowX: chartWidth > wrapperW ? 'auto' : 'visible',
+            overflowY: 'visible',
+          }}
+        >
+          {wrapperW > 0 && (
+            <BarChart
+              width={chartWidth}
+              height={Math.max(120, chartH)}
+              data={chartData}
+              barCategoryGap="30%"
+              margin={{ top: 8, right: 16, left: -12, bottom: 0 }}
+              style={{ cursor: 'pointer' }}
+              onClick={handleBarClick}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="rgba(255,255,255,0.04)"
+                vertical={false}
               />
-            ))}
-          </BarChart>
-        )}
+              <XAxis
+                dataKey="name"
+                tick={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fill: '#3d5068' }}
+                axisLine={{ stroke: 'rgba(255,255,255,0.06)' }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, fill: '#2d4060' }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+              <Legend content={<CustomLegend />} />
+              {SEGS.map(seg => (
+                <Bar
+                  key={seg.key}
+                  dataKey={seg.key}
+                  name={seg.label}
+                  stackId={chartType === 'bar_stacked' ? 'a' : undefined}
+                  fill={seg.color}
+                  fillOpacity={0.85}
+                  radius={chartType === 'bar_grouped' ? [2, 2, 0, 0] : undefined}
+                />
+              ))}
+            </BarChart>
+          )}
+        </div>
       </div>
     </div>
   )

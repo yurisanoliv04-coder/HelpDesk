@@ -9,12 +9,14 @@ export interface RecentMessage {
 }
 
 export async function getRecentMessages(userId: string): Promise<RecentMessage[]> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
   return prisma.ticketMessage.findMany({
     where: {
       isNote: false,
       visibility: 'PUBLIC',
       authorId: { not: userId },
       ticket: { OR: [{ requesterId: userId }, { assigneeId: userId }] },
+      createdAt: { gte: sevenDaysAgo },
     },
     orderBy: { createdAt: 'desc' },
     take: 5,

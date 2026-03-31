@@ -84,6 +84,7 @@ export interface CreateAssetInput {
   tag: string
   name: string
   categoryId: string
+  modelId?: string
   status: AssetStatus
   location?: string
   serialNumber?: string
@@ -145,6 +146,7 @@ export async function createAsset(input: CreateAssetInput): Promise<{ ok: true; 
         tag: input.tag.trim(),
         name: input.name.trim(),
         categoryId: input.categoryId,
+        modelId: input.modelId ?? null,
         status: input.status ?? 'STOCK',
         location: input.location?.trim() || null,
         serialNumber: input.serialNumber?.trim() || null,

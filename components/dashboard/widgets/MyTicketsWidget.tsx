@@ -30,11 +30,15 @@ function ageInfo(createdAt: Date) {
   return { color: '#f87171', label: fmt(hours) }
 }
 
+const MAX_ITEMS = 30
+const ROW_HEIGHT = 52
+
 export default async function MyTicketsWidget() {
   const session = await auth()
   const userId = session!.user.id
   const isCollaborador = ['COLABORADOR', 'AUXILIAR_TI'].includes(session?.user.role ?? '')
   const tickets = await getMyTickets(userId, isCollaborador)
+  const fillerCount = Math.max(0, MAX_ITEMS - tickets.length)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -46,9 +50,12 @@ export default async function MyTicketsWidget() {
       </div>
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', flex: 1 }}>
         {tickets.length === 0 ? (
-          <p style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-dim)', fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
-            — nenhum chamado ativo —
-          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 10, padding: 24 }}>
+            <span style={{ fontSize: 36, lineHeight: 1 }}>😎</span>
+            <p style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.5 }}>
+              Tudo limpo!<br />Você pode descansar agora.
+            </p>
+          </div>
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '7px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-input)' }}>
@@ -62,7 +69,7 @@ export default async function MyTicketsWidget() {
               </div>
             </div>
             <div>
-              {tickets.map((ticket, i) => {
+              {tickets.map((ticket) => {
                 const age = ageInfo(ticket.createdAt)
                 return (
                   <Link
@@ -71,9 +78,9 @@ export default async function MyTicketsWidget() {
                     className="hover-row"
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14,
-                      padding: '11px 18px',
-                      borderBottom: i < tickets.length - 1 ? '1px solid var(--border)' : 'none',
-                      textDecoration: 'none',
+                      padding: '0 18px', height: ROW_HEIGHT,
+                      borderBottom: '1px solid var(--border)',
+                      textDecoration: 'none', overflow: 'hidden',
                     }}
                   >
                     <div style={{ width: 3, alignSelf: 'stretch', borderRadius: 2, background: priorityBar[ticket.priority], flexShrink: 0 }} />
@@ -103,6 +110,22 @@ export default async function MyTicketsWidget() {
                   </Link>
                 )
               })}
+              {Array.from({ length: fillerCount }).map((_, i) => (
+                <div
+                  key={`filler-${i}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '0 18px', height: ROW_HEIGHT,
+                    borderBottom: '1px solid var(--border)',
+                    opacity: 0.35,
+                  }}
+                >
+                  <div style={{ width: 3, flexShrink: 0 }} />
+                  <p style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-dim)' }}>
+                    — nada por aqui —
+                  </p>
+                </div>
+              ))}
             </div>
           </>
         )}
