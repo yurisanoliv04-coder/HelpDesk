@@ -121,6 +121,7 @@ export default async function AssetsPage({
       include: {
         category:       true,
         assignedToUser: { select: { id: true, name: true } },
+        model:          { select: { id: true, name: true, manufacturer: true, imageData: true } },
       },
     }),
     prisma.asset.count({ where }),
@@ -415,24 +416,37 @@ export default async function AssetsPage({
                 <AssetSelectCheckbox assetId={asset.id} />
               </div>
 
-              {/* Category icon */}
+              {/* Imagem do modelo / ícone de categoria */}
               <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center' }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  width: 36, height: 36, borderRadius: 8, flexShrink: 0,
                   background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden',
                 }}>
-                  <CategoryIcon name={asset.category.icon} />
+                  {asset.model?.imageData
+                    ? <img
+                        src={asset.model.imageData}
+                        alt={asset.model.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }}
+                      />
+                    : <CategoryIcon name={asset.category.icon} />
+                  }
                 </div>
               </div>
 
-              {/* Nome + serial */}
+              {/* Nome + modelo + serial */}
               <div style={{ position: 'relative', zIndex: 1, paddingRight: 12, minWidth: 0, pointerEvents: 'none' }}>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#c8d6e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
                   {asset.name}
                 </p>
+                {asset.model && (
+                  <p style={{ fontSize: 11, color: '#4a90d9', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {asset.model.manufacturer ? `${asset.model.manufacturer} ${asset.model.name}` : asset.model.name}
+                  </p>
+                )}
                 {asset.serialNumber && (
-                  <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', marginTop: 2 }}>
+                  <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#2d4060', marginTop: 1 }}>
                     S/N: {asset.serialNumber}
                   </p>
                 )}
