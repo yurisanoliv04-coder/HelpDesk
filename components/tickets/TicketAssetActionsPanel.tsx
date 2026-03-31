@@ -45,13 +45,13 @@ const kindConfig: Record<KindFilter, { label: string; color: string }> = {
   ALL:        { label: 'Todos',        color: '#7a9bbc' },
   EQUIPMENT:  { label: 'Equipamentos', color: '#38bdf8' },
   ACCESSORY:  { label: 'Acessórios',   color: '#a78bfa' },
-  DISPOSABLE: { label: 'Descartáveis', color: '#fb923c' },
+  DISPOSABLE: { label: 'Consumíveis', color: '#fb923c' },
 }
 
 const kindBadge: Record<AssetKind, { label: string; color: string }> = {
   EQUIPMENT:  { label: 'Equipamento', color: '#38bdf8' },
   ACCESSORY:  { label: 'Acessório',   color: '#a78bfa' },
-  DISPOSABLE: { label: 'Descartável', color: '#fb923c' },
+  DISPOSABLE: { label: 'Consumível', color: '#fb923c' },
 }
 
 const actionLabel: Record<string, string> = {

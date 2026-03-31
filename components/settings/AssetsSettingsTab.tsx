@@ -15,7 +15,7 @@ type AssetCategoryKind = 'EQUIPMENT' | 'ACCESSORY' | 'DISPOSABLE'
 const KIND_OPTIONS: { value: AssetCategoryKind; label: string; color: string }[] = [
   { value: 'EQUIPMENT',  label: 'Equipamento', color: '#38bdf8' },
   { value: 'ACCESSORY',  label: 'Acessório',   color: '#a78bfa' },
-  { value: 'DISPOSABLE', label: 'Descartável',  color: '#fb923c' },
+  { value: 'DISPOSABLE', label: 'Consumível',  color: '#fb923c' },
 ]
 
 interface AssetCategory {

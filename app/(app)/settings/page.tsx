@@ -186,7 +186,7 @@ export default async function SettingsPage() {
     {
       href: '/settings/descartaveis',
       accent: '#fb923c',
-      title: 'Descartáveis',
+      title: 'Consumíveis',
       description: 'Itens de uso único: fones descartáveis, cabos avulsos, etc.',
       count: counts.disposables,
       subItems: ['Categorias', 'Estoque', 'Mínimo'],
