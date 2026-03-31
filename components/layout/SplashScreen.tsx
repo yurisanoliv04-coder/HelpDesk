@@ -120,10 +120,8 @@ export default function SplashScreen() {
   const [barWidth, setBarWidth] = useState(0)
 
   useEffect(() => {
-    // Mostra apenas uma vez por sessão
-    const shown = sessionStorage.getItem('hd-splash-shown')
-    if (shown) return
-    sessionStorage.setItem('hd-splash-shown', '1')
+    // Mostra sempre que o sistema carrega (layout remonta apenas em refresh real,
+    // não em navegações client-side do Next.js)
     setVisible(true)
 
     // Revela cada linha no tempo correto
