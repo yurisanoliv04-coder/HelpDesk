@@ -42,7 +42,7 @@ const GRID = '36px 44px minmax(160px,1fr) minmax(140px,1.2fr) 100px 130px 150px 
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string; modelId?: string; page?: string }>
+  searchParams: Promise<{ status?: string; performance?: string; q?: string; location?: string; userId?: string; categoryId?: string; modelId?: string; page?: string; ramQ?: string; storageQ?: string; cpuGenQ?: string; cpuBrandQ?: string }>
 }) {
   const session = await auth()
   const role = session?.user.role
@@ -51,7 +51,7 @@ export default async function AssetsPage({
   const sp = await searchParams
 
   // Restaura o último filtro ativo quando o usuário chega sem nenhum parâmetro
-  if (!sp.status && !sp.performance && !sp.q && !sp.location && !sp.userId && !sp.categoryId && !sp.modelId) {
+  if (!sp.status && !sp.performance && !sp.q && !sp.location && !sp.userId && !sp.categoryId && !sp.modelId && !sp.ramQ && !sp.storageQ && !sp.cpuGenQ && !sp.cpuBrandQ) {
     const cookieStore = await cookies()
     const saved = cookieStore.get('hd_assets_filter')?.value
     if (saved) redirect(`/assets?${decodeURIComponent(saved)}`)
@@ -81,6 +81,25 @@ export default async function AssetsPage({
   if (sp.userId)      where.assignedToUserId = sp.userId
   if (sp.categoryId)  where.categoryId       = sp.categoryId
   if (sp.modelId)     where.modelId          = sp.modelId
+
+  // ── Filtros avançados de hardware ──────────────────────────────────────────
+  if (sp.ramQ) {
+    if (sp.ramQ === 'BOM')          where.ramGb = { gte: 16 }
+    else if (sp.ramQ === 'INTERMEDIARIO') where.ramGb = { gte: 8, lt: 16 }
+    else if (sp.ramQ === 'RUIM')    where.ramGb = { gt: 0, lt: 8 }
+  }
+  if (sp.storageQ) {
+    where.storageType = sp.storageQ
+  }
+  if (sp.cpuGenQ) {
+    if (sp.cpuGenQ === 'BOM')          where.cpuGeneration = { gte: 10 }
+    else if (sp.cpuGenQ === 'INTERMEDIARIO') where.cpuGeneration = { gte: 6, lt: 10 }
+    else if (sp.cpuGenQ === 'RUIM')    where.cpuGeneration = { gt: 0, lt: 6 }
+  }
+  if (sp.cpuBrandQ) {
+    where.cpuBrand = sp.cpuBrandQ
+  }
+
   if (sp.q) {
     const q = sp.q
     where.OR = [
@@ -345,6 +364,7 @@ export default async function AssetsPage({
           locations={locationRows.map(l => l.location!)}
           categories={patrimonioCats}
           perfCounts={{ BOM: perfMap.BOM ?? 0, INTERMEDIARIO: perfMap.INTERMEDIARIO ?? 0, RUIM: perfMap.RUIM ?? 0 }}
+          hasHardwareFilters={!!(sp.ramQ || sp.storageQ || sp.cpuGenQ || sp.cpuBrandQ)}
         />
       </Suspense>
 
