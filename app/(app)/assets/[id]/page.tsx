@@ -424,6 +424,7 @@ export default async function AssetDetailPage({
             warrantyUntil: asset.warrantyUntil ? asset.warrantyUntil.toISOString() : null,
           }}
           canEdit={canEdit}
+          isComputer={asset.category.isComputer}
           performanceScore={asset.performanceScore}
           performanceLabel={asset.performanceLabel}
           performanceNotes={asset.performanceNotes}

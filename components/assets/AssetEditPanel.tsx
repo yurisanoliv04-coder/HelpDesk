@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { updateAsset } from '@/app/(app)/assets/[id]/actions'
 import {
   Pencil, X, Check, Loader2,
@@ -25,6 +26,7 @@ interface AssetData {
 interface Props {
   asset: AssetData; canEdit: boolean
   performanceScore: number | null; performanceLabel: string | null; performanceNotes: string | null
+  isComputer?: boolean
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ function focusOut(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | H
   e.target.style.boxShadow = 'none'
 }
 
-export default function AssetEditPanel({ asset, canEdit, performanceScore, performanceLabel, performanceNotes }: Props) {
+export default function AssetEditPanel({ asset, canEdit, performanceScore, performanceLabel, performanceNotes, isComputer = false }: Props) {
   const [editing, setEditing] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -204,18 +206,19 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
             </span>
           )}
           {canEdit && !editing && (
-            <button onClick={() => setEditing(true)} style={{
+            <Link href={`/assets/${asset.id}/edit`} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
               padding: '7px 14px', borderRadius: 8,
               background: 'var(--bg-elevated)', border: '1px solid var(--border-hover)',
               color: 'var(--text-muted)', fontFamily: "'JetBrains Mono', monospace",
               fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s',
+              textDecoration: 'none',
             }}
             onMouseEnter={e => { const t = e.currentTarget; t.style.background = 'var(--accent-cyan-dim)'; t.style.borderColor = 'var(--accent-cyan)'; t.style.color = 'var(--accent-cyan)' }}
             onMouseLeave={e => { const t = e.currentTarget; t.style.background = 'var(--bg-elevated)'; t.style.borderColor = 'var(--border-hover)'; t.style.color = 'var(--text-muted)' }}
             >
               <Pencil size={11} /> EDITAR
-            </button>
+            </Link>
           )}
           {canEdit && editing && (
             <>
@@ -310,9 +313,9 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
       </div>
 
       {/* ════════════════════════════════════════════════════════════════════
-          ROW 2: HARDWARE — 2 cols (Processador | Memória & Armazenamento)
+          ROW 2: HARDWARE — só para ativos com isComputer = true
       ════════════════════════════════════════════════════════════════════ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      {isComputer && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
 
         {/* PROCESSADOR */}
         <div style={{ ...card, borderLeft: '3px solid #60a5fa' }}>
@@ -438,7 +441,7 @@ export default function AssetEditPanel({ asset, canEdit, performanceScore, perfo
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ════════════════════════════════════════════════════════════════════
           PERFORMANCE (only if data exists)
