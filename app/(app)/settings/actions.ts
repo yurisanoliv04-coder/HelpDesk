@@ -34,6 +34,23 @@ export async function updateUserDepartment(userId: string, departmentId: string 
   revalidatePath('/settings')
 }
 
+export async function changeUserPassword(
+  userId: string,
+  newPassword: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    if (!newPassword || newPassword.length < 6)
+      return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres' }
+    const bcrypt = await import('bcryptjs')
+    const hash = await bcrypt.hash(newPassword, 10)
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: hash } })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Erro desconhecido' }
+  }
+}
+
 // ─── Departments ──────────────────────────────────────────────────────────────
 export async function createDepartment(name: string, code: string): Promise<{ ok: boolean; error?: string }> {
   try {

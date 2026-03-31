@@ -458,7 +458,7 @@ export default async function MovementsPage({
         sourceLabel: 'Usuário',
         subject1: e.user.name,
         subject2: undefined,
-        subjectHref: `/people/${e.user.id}`,
+        subjectHref: undefined,
         description: e.description ?? evConfig[e.type]?.label ?? e.type,
         actorName: e.actor?.name ?? 'Sistema',
       })),

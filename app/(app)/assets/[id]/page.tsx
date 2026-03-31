@@ -329,10 +329,9 @@ export default async function AssetDetailPage({
                 label="Atribuído a"
                 iconColor="#34d399"
               >
-                <Link href={`/people/${asset.assignedToUser.id}`} style={{
+                <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   fontSize: 15, fontWeight: 600, color: '#34d399',
-                  textDecoration: 'none',
                 }}>
                   <span style={{
                     width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
@@ -343,7 +342,7 @@ export default async function AssetDetailPage({
                     {asset.assignedToUser.name.slice(0, 2).toUpperCase()}
                   </span>
                   {asset.assignedToUser.name}
-                </Link>
+                </span>
               </MetaField>
             )}
 
@@ -540,17 +539,17 @@ export default async function AssetDetailPage({
                       {mv.fromUser && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.05em' }}>DE</span>
-                          <Link href={`/people/${mv.fromUser.id}`} style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
                             {mv.fromUser.name}
-                          </Link>
+                          </span>
                         </div>
                       )}
                       {mv.toUser && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                           <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.05em' }}>PARA</span>
-                          <Link href={`/people/${mv.toUser.id}`} style={{ fontSize: 13, fontWeight: 600, color, textDecoration: 'none' }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color }}>
                             {mv.toUser.name}
-                          </Link>
+                          </span>
                         </div>
                       )}
                       {mv.fromLocation && (
@@ -567,9 +566,9 @@ export default async function AssetDetailPage({
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: 'var(--text-dim)' }}>POR</span>
-                        <Link href={`/people/${mv.actor.id}`} style={{ fontSize: 13, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           {mv.actor.name}
-                        </Link>
+                        </span>
                       </div>
                     </div>
 

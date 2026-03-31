@@ -396,7 +396,6 @@ export default async function AssetsPage({
           const perf = asset.performanceLabel ? perfConfig[asset.performanceLabel] : null
           const score = asset.performanceScore
           const locationHref = asset.location ? `/assets?location=${encodeURIComponent(asset.location)}` : null
-          const userHref     = asset.assignedToUser ? `/people/${asset.assignedToUser.id}` : null
 
           return (
             <div
@@ -459,8 +458,8 @@ export default async function AssetsPage({
 
               {/* Alocado para */}
               <div style={{ position: 'relative', zIndex: 1, paddingRight: 10 }}>
-                {asset.assignedToUser && userHref ? (
-                  <Link href={userHref} style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }} className="interactive-cell">
+                {asset.assignedToUser ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, background: 'rgba(0,217,184,0.12)', border: '1px solid rgba(0,217,184,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#00d9b8' }}>
                         {asset.assignedToUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -469,7 +468,7 @@ export default async function AssetsPage({
                     <span style={{ fontSize: 12, color: '#7a9bbc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {asset.assignedToUser.name.split(' ').slice(0, 2).join(' ')}
                     </span>
-                  </Link>
+                  </div>
                 ) : (
                   <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', fontStyle: 'italic' }}>não alocado</span>
                 )}

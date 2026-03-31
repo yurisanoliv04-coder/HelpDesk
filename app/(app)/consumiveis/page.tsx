@@ -407,7 +407,6 @@ export default async function ConsumiveisPage({
             const st  = statusConfig[asset.status] ?? statusConfig.STOCK
             const kc  = kindConfig[asset.category.kind as Kind] ?? kindConfig.ACCESSORY
             const locationHref = asset.location ? `/consumiveis?location=${encodeURIComponent(asset.location)}` : null
-            const userHref     = asset.assignedToUser ? `/people/${asset.assignedToUser.id}` : null
 
             return (
               <div
@@ -491,8 +490,8 @@ export default async function ConsumiveisPage({
 
                 {/* Alocado para */}
                 <div style={{ position: 'relative', zIndex: 1, paddingRight: 10 }}>
-                  {asset.assignedToUser && userHref ? (
-                    <Link href={userHref} style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }} className="interactive-cell">
+                  {asset.assignedToUser ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, background: 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, fontWeight: 700, color: '#a78bfa' }}>
                           {asset.assignedToUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -501,7 +500,7 @@ export default async function ConsumiveisPage({
                       <span style={{ fontSize: 12, color: '#7a9bbc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {asset.assignedToUser.name.split(' ').slice(0, 2).join(' ')}
                       </span>
-                    </Link>
+                    </div>
                   ) : (
                     <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', fontStyle: 'italic' }}>não alocado</span>
                   )}

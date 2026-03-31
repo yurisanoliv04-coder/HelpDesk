@@ -194,7 +194,7 @@ export default function SearchModal({ open, onClose, onOpen, userRole }: Props) 
     onClose()
     if (item.kind === 'ticket') router.push(`/tickets/${item.data.id}`)
     else if (item.kind === 'asset') router.push(`/assets/${item.data.id}`)
-    else router.push(`/people/${item.data.id}`)
+    else router.push(`/settings/usuarios`)
   }, [onClose, router])
 
   function handleKeyDown(e: React.KeyboardEvent) {
