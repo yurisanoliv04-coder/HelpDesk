@@ -20,6 +20,7 @@ const LINES = [
 ]
 
 const TOTAL_DURATION = 3900 // ms até começar a sair
+const EXIT_DURATION  = 700  // ms da animação de saída
 
 /* ─── Canvas Matrix ──────────────────────────────────────────────────────── */
 function MatrixCanvas() {
@@ -55,7 +56,6 @@ function MatrixCanvas() {
       for (let i = 0; i < drops.length; i++) {
         const char = chars[Math.floor(Math.random() * chars.length)]
         const y = drops[i] * fontSize
-        // Head char — brighter
         ctx!.fillStyle = drops[i] > 2 ? 'rgba(0,255,136,0.9)' : 'rgba(0,217,184,0.5)'
         ctx!.fillText(char, i * fontSize, y)
         if (y > canvas!.height && Math.random() > 0.975) drops[i] = 0
@@ -79,7 +79,9 @@ function MatrixCanvas() {
 }
 
 /* ─── Linha digitada ─────────────────────────────────────────────────────── */
-function TypedLine({ text, color, bold, speed = 28 }: { text: string; color: string; bold?: boolean; speed?: number }) {
+function TypedLine({ text, color, bold, speed = 28 }: {
+  text: string; color: string; bold?: boolean; speed?: number
+}) {
   const [displayed, setDisplayed] = useState('')
 
   useEffect(() => {
@@ -113,22 +115,23 @@ function TypedLine({ text, color, bold, speed = 28 }: { text: string; color: str
 }
 
 /* ─── Componente principal ───────────────────────────────────────────────── */
-export default function SplashScreen() {
-  const [visible, setVisible] = useState(false)
+// onComplete é chamado quando a animação de saída termina — ideal para redirecionar
+export default function SplashScreen({ onComplete }: { onComplete?: () => void }) {
+  const [visible, setVisible] = useState(true)
   const [exiting, setExiting] = useState(false)
   const [visibleLines, setVisibleLines] = useState<number[]>([])
   const [barWidth, setBarWidth] = useState(0)
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
 
   useEffect(() => {
-    // Mostra sempre que o sistema carrega (layout remonta apenas em refresh real,
-    // não em navegações client-side do Next.js)
-    setVisible(true)
+    const timers: ReturnType<typeof setTimeout>[] = []
 
     // Revela cada linha no tempo correto
     LINES.forEach((line, idx) => {
-      setTimeout(() => {
+      timers.push(setTimeout(() => {
         setVisibleLines(prev => [...prev, idx])
-      }, line.delay)
+      }, line.delay))
     })
 
     // Barra de progresso
@@ -141,14 +144,21 @@ export default function SplashScreen() {
         return next >= 100 ? 100 : next
       })
     }, 30)
-    setTimeout(() => clearInterval(barInterval), barEnd)
+    timers.push(setTimeout(() => clearInterval(barInterval), barEnd))
 
-    // Inicia a saída
-    setTimeout(() => setExiting(true), TOTAL_DURATION)
-    // Remove do DOM
-    setTimeout(() => setVisible(false), TOTAL_DURATION + 700)
+    // Inicia a animação de saída
+    timers.push(setTimeout(() => setExiting(true), TOTAL_DURATION))
 
-    return () => clearInterval(barInterval)
+    // Remove do DOM e dispara onComplete
+    timers.push(setTimeout(() => {
+      setVisible(false)
+      onCompleteRef.current?.()
+    }, TOTAL_DURATION + EXIT_DURATION))
+
+    return () => {
+      timers.forEach(clearTimeout)
+      clearInterval(barInterval)
+    }
   }, [])
 
   if (!visible) return null
