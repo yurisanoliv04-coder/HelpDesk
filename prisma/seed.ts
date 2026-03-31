@@ -145,6 +145,9 @@ async function main() {
     const existing = await prisma.ticket.findUnique({ where: { code: data.code } })
     if (existing) return existing
 
+    const isClosed = data.status === TicketStatus.DONE || data.status === TicketStatus.CANCELED
+    const closedAt = isClosed ? new Date(createdAt.getTime() + 3600000) : null // closed ~1h after creation
+
     const ticket = await prisma.ticket.create({
       data: {
         code: data.code,
@@ -158,6 +161,7 @@ async function main() {
         departmentId: data.departmentId,
         createdAt,
         updatedAt: createdAt,
+        closedAt,
       },
     })
 

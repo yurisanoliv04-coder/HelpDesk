@@ -1,26 +1,36 @@
-﻿@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
 
+/* ── Constantes fixas (nunca mudam com tema) ─────────────────────────── */
 :root {
-  --bg-base:         #070c14;
-  --bg-surface:      #0d1422;
-  --bg-elevated:     #111927;
-  --bg-hover:        #161f30;
-  --border:          rgba(255,255,255,0.07);
-  --border-bright:   rgba(255,255,255,0.13);
-  --accent-cyan:     #00d9b8;
-  --accent-cyan-dim: rgba(0,217,184,0.1);
-  --accent-indigo:   #818cf8;
-  --text-primary:    #e2e8f0;
-  --text-muted:      #64748b;
-  --text-dim:        #3d4f66;
   --sidebar-w:       228px;
+  --sidebar-w-collapsed: 60px;
   --status-open:     #38bdf8;
   --status-progress: #f59e0b;
   --status-hold:     #a78bfa;
   --status-done:     #34d399;
   --status-closed:   #475569;
   --status-urgent:   #f87171;
+  --accent-indigo:   #818cf8;
+  --border-bright:   rgba(255,255,255,0.13);
+}
+
+/* ── Fallbacks de tema — sobrescritos pelo <style> THEME_CSS no layout ── */
+:root {
+  --bg-base:         #070c14;
+  --bg-sidebar:      #080d18;
+  --bg-surface:      #0d1422;
+  --bg-elevated:     #111927;
+  --bg-hover:        #161f30;
+  --bg-input:        #0a1019;
+  --border:          rgba(255,255,255,0.07);
+  --border-hover:    rgba(255,255,255,0.14);
+  --accent-cyan:     #00d9b8;
+  --accent-cyan-dim: rgba(0,217,184,0.1);
+  --accent-glow:     rgba(0,217,184,0.18);
+  --text-primary:    #e2e8f0;
+  --text-muted:      #64748b;
+  --text-dim:        #3d4f66;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -38,18 +48,18 @@ body {
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,217,184,0.4); }
+::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-glow); }
 
-::selection { background: rgba(0,217,184,0.2); color: #fff; }
+::selection { background: var(--accent-cyan-dim); color: var(--text-primary); }
 
 .grid-texture {
-  background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
-.glow-cyan { box-shadow: 0 0 24px rgba(0,217,184,0.15); }
-.text-glow-cyan { text-shadow: 0 0 14px rgba(0,217,184,0.5); }
+.glow-cyan { box-shadow: 0 0 24px var(--accent-glow); }
+.text-glow-cyan { text-shadow: 0 0 14px var(--accent-glow); }
 
 .priority-urgent { border-left: 3px solid #f87171 \!important; }
 .priority-high    { border-left: 3px solid #fb923c \!important; }
@@ -71,7 +81,7 @@ body {
 .status-dot.urgent { animation: urgent-pulse 2s ease-in-out infinite; }
 
 .nav-active {
-  background: rgba(0,217,184,0.08) \!important;
+  background: var(--accent-cyan-dim) \!important;
   border-left: 2px solid var(--accent-cyan) \!important;
   color: var(--accent-cyan) \!important;
 }
@@ -88,9 +98,19 @@ body {
 }
 .animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
 
-/* Row hover utility — used in server-rendered list pages */
+/* Row hover utility */
 .hover-row:hover { background: var(--bg-elevated) !important; }
 .hover-row-surface:hover { background: var(--bg-surface) !important; }
+
+/* Edit button */
+.edit-btn { color: var(--text-dim) !important; }
+.edit-btn:hover { background: var(--accent-cyan-dim) !important; border-color: var(--accent-cyan) !important; color: var(--accent-cyan) !important; }
+
+/* Interactive cell */
+.interactive-cell { border-radius: 5px; padding: 2px 4px; margin: -2px -4px; transition: background 0.12s, color 0.12s; }
+.interactive-cell:hover { background: var(--accent-cyan-dim); color: var(--accent-cyan) !important; }
+.interactive-cell:hover span { color: var(--accent-cyan) !important; }
+.interactive-cell:hover svg path { stroke: var(--accent-cyan) !important; }
 
 /* Section label */
 .section-label {
@@ -108,7 +128,7 @@ body {
   align-items: center;
   padding: 6px 14px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid var(--border);
   font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   color: var(--text-muted);
@@ -117,11 +137,85 @@ body {
   text-decoration: none;
 }
 .filter-chip:hover {
-  border-color: rgba(0,217,184,0.3);
+  border-color: var(--accent-cyan);
   color: var(--accent-cyan);
 }
 .filter-chip.active {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
-  background: rgba(0,217,184,0.07);
+  background: var(--accent-cyan-dim);
 }
+
+
+/* ── react-grid-layout ──────────────────────────────────────────────────── */
+
+/* Edit mode backdrop */
+.dash-edit-mode {
+  border: 2px dashed rgba(16, 185, 129, 0.2);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+/* Drag cursor on active drag */
+.dash-edit-mode .react-draggable-dragging {
+  cursor: grabbing !important;
+}
+
+/* RGL placeholder (drop ghost) */
+.react-grid-placeholder {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1.5px dashed rgba(16, 185, 129, 0.5) !important;
+  border-radius: 10px;
+}
+
+/* ── Resize handles ─────────────────────────────────────────────────────── */
+/* Base: hidden everywhere, no SVG arrow, no rotation */
+.react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+  background-image: none !important;
+  transform: none !important;
+  z-index: 25;
+  padding: 0 !important;
+}
+
+/* Show in edit mode; brighten on hover */
+.dash-edit-mode .react-resizable-handle        { opacity: 0.45; }
+.dash-edit-mode .react-resizable-handle:hover  { opacity: 1; }
+
+/* ── Corner handles: small emerald squares ── */
+.react-resizable-handle-se,
+.react-resizable-handle-sw,
+.react-resizable-handle-ne,
+.react-resizable-handle-nw {
+  width: 10px !important;
+  height: 10px !important;
+  background-color: #10b981;
+  border-radius: 2px;
+}
+
+/* ── Edge handles: thin emerald bars ── */
+/* South / North — horizontal bar, centered */
+.react-resizable-handle-s,
+.react-resizable-handle-n {
+  width: 44px !important;
+  height: 5px !important;
+  margin-left: -22px !important;   /* center: -(44/2) */
+  background-color: #10b981;
+  border-radius: 3px;
+}
+
+/* East / West — vertical bar, centered */
+.react-resizable-handle-e,
+.react-resizable-handle-w {
+  width: 5px !important;
+  height: 44px !important;
+  margin-top: -22px !important;    /* center: -(44/2) */
+  background-color: #10b981;
+  border-radius: 3px;
+}
+
+/* ── N/NE/NW: shift below the 28px edit-mode top bar ── */
+.dash-edit-mode .react-resizable-handle-n  { top: 26px !important; }
+.dash-edit-mode .react-resizable-handle-nw { top: 26px !important; }
+.dash-edit-mode .react-resizable-handle-ne { top: 26px !important; }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 
 type Category = {
   id: string
@@ -9,6 +10,7 @@ type Category = {
   description: string | null
   icon: string | null
   defaultPriority: string
+  parentId: string | null
 }
 type User = {
   id: string
@@ -59,22 +61,96 @@ const priorityLabel: Record<string, { label: string; color: string }> = {
 export default function NewTicketForm({ categories, users, solutions, currentUserId, isTI, isAux, assetsByUser }: Props) {
   const router = useRouter()
 
-  const [categoryId, setCategoryId] = useState('')
-  const [priority, setPriority]     = useState('MEDIUM')
-  const [title, setTitle]           = useState('')
+  const [categoryId, setCategoryId]   = useState('')
+  const [parentId, setParentId]       = useState<string | null>(null)
+  const [priority, setPriority]       = useState('MEDIUM')
+  const [title, setTitle]             = useState('')
   const [description, setDescription] = useState('')
   const [requesterId, setRequesterId] = useState(currentUserId)
-  const [loading, setLoading]       = useState(false)
-  const [error, setError]           = useState('')
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState('')
   const [solutionExpanded, setSolutionExpanded] = useState<string | null>(null)
+  const [catSearch, setCatSearch]     = useState('')
+  const [suggestHint, setSuggestHint] = useState('')
+
+  // Separate root categories from subcategories
+  const rootCategories = categories.filter(c => !c.parentId)
+  const subCategories  = categories.filter(c => c.parentId === parentId)
+  const hasChildren    = (id: string) => categories.some(c => c.parentId === id)
+
+  // Filtered root categories based on search query
+  const filteredRoots = catSearch.trim()
+    ? rootCategories.filter(c =>
+        c.name.toLowerCase().includes(catSearch.toLowerCase()) ||
+        (c.description ?? '').toLowerCase().includes(catSearch.toLowerCase())
+      )
+    : rootCategories
 
   const selectedCategory = categories.find(c => c.id === categoryId)
 
-  // When AUXILIAR_TI selects a category, auto-set priority from category default
-  function handleCategorySelect(cat: Category) {
+  // Clicking a root category
+  function handleRootSelect(cat: Category) {
+    // Re-clicking same parent → no-op (prevent deselection)
+    if (parentId === cat.id) return
+    setSolutionExpanded(null)
+    setSuggestHint('')
+    if (hasChildren(cat.id)) {
+      // Has subcategories — show them, clear previous leaf selection
+      setParentId(cat.id)
+      setCategoryId('')
+    } else {
+      // Leaf category — select directly
+      setParentId(cat.id)
+      setCategoryId(cat.id)
+      setPriority(cat.defaultPriority)
+    }
+  }
+
+  // Clicking a subcategory
+  function handleSubSelect(cat: Category) {
     setCategoryId(cat.id)
     setSolutionExpanded(null)
-    if (isAux) setPriority(cat.defaultPriority)
+    setSuggestHint('')
+    setPriority(cat.defaultPriority)
+  }
+
+  // Suggest best matching category based on title keywords
+  function suggestCategory() {
+    const text = title.trim()
+    if (!text) {
+      setSuggestHint('Digite um título primeiro.')
+      return
+    }
+    const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+    const scored = categories.map(cat => {
+      const haystack = `${cat.name} ${cat.description ?? ''}`.toLowerCase()
+      const score = words.reduce((acc, w) => acc + (haystack.includes(w) ? 1 : 0), 0)
+      return { cat, score }
+    })
+    scored.sort((a, b) => b.score - a.score)
+    const best = scored[0]
+    if (!best || best.score === 0) {
+      setSuggestHint('Nenhuma sugestão encontrada. Selecione manualmente.')
+      return
+    }
+    // Navigate to correct parent/leaf
+    const bestCat = best.cat
+    if (bestCat.parentId) {
+      const parent = categories.find(c => c.id === bestCat.parentId)
+      if (parent && parentId !== parent.id) {
+        setParentId(parent.id)
+      }
+      setCategoryId(bestCat.id)
+      setPriority(bestCat.defaultPriority)
+      setSuggestHint(`Sugerido: ${bestCat.name}`)
+    } else {
+      handleRootSelect(bestCat)
+      if (!hasChildren(bestCat.id)) {
+        setSuggestHint(`Sugerido: ${bestCat.name}`)
+      } else {
+        setSuggestHint(`Sugerido: ${bestCat.name} — selecione uma subcategoria`)
+      }
+    }
   }
 
   const matchedSolutions = categoryId
@@ -195,49 +271,128 @@ export default function NewTicketForm({ categories, users, solutions, currentUse
 
       {/* ── Categoria ─────────────────────────────────────────── */}
       <FormBlock label="Categoria" required>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-          {categories.map(cat => {
-            const active = categoryId === cat.id
-            const defPrio = priorityLabel[cat.defaultPriority]
+        {/* Search + suggest row */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            type="text"
+            value={catSearch}
+            onChange={e => { setCatSearch(e.target.value); setSuggestHint('') }}
+            placeholder="Buscar categoria..."
+            style={{
+              flex: 1, padding: '8px 12px',
+              background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8, color: '#c8d6e5', fontFamily: 'inherit', fontSize: 13, outline: 'none',
+            }}
+          />
+          <button
+            type="button"
+            onClick={suggestCategory}
+            title="Sugerir categoria com base no título"
+            style={{
+              padding: '8px 14px', borderRadius: 8, cursor: 'pointer',
+              background: 'rgba(0,217,184,0.08)', border: '1px solid rgba(0,217,184,0.25)',
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+              color: '#00d9b8', whiteSpace: 'nowrap', transition: 'all 0.12s',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            Sugerir
+          </button>
+        </div>
+        {suggestHint && (
+          <p style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 10,
+            color: suggestHint.startsWith('Sugerido') ? '#00d9b8' : '#f87171',
+            marginBottom: 10,
+          }}>
+            {suggestHint.startsWith('Sugerido') ? '✓ ' : '⚠ '}{suggestHint}
+          </p>
+        )}
+        {catSearch && filteredRoots.length === 0 && (
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068', marginBottom: 10 }}>
+            Nenhuma categoria encontrada para &quot;{catSearch}&quot;.
+          </p>
+        )}
+        {/* Root categories — always visible */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {filteredRoots.map(cat => {
+            const isParentActive = parentId === cat.id
+            const childCount = categories.filter(c => c.parentId === cat.id).length
             return (
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => handleCategorySelect(cat)}
+                onClick={() => handleRootSelect(cat)}
                 style={{
                   padding: '10px 14px', borderRadius: 8, textAlign: 'left',
-                  background: active ? 'rgba(0,217,184,0.1)' : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${active ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                  background: isParentActive ? 'rgba(0,217,184,0.1)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${isParentActive ? 'rgba(0,217,184,0.35)' : 'rgba(255,255,255,0.07)'}`,
                   cursor: 'pointer', transition: 'all 0.12s',
                 }}
               >
                 {cat.icon && (
-                  <span style={{ fontSize: 16, display: 'block', marginBottom: 4 }}>{cat.icon}</span>
-                )}
-                <span style={{
-                  fontSize: 13, fontWeight: 600,
-                  color: active ? '#00d9b8' : '#7a9bbc', display: 'block',
-                }}>
-                  {cat.name}
-                </span>
-                {cat.description && (
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: active ? '#3d9e8e' : '#2d4060', display: 'block', marginTop: 3 }}>
-                    {cat.description}
+                  <span style={{ display: 'block', marginBottom: 4 }}>
+                    <CategoryIcon name={cat.icon} size={18} color={isParentActive ? '#00d9b8' : '#3d5068'} />
                   </span>
                 )}
-                {/* Show default priority hint for aux users */}
-                {isAux && defPrio && (
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
-                    color: defPrio.color, display: 'block', marginTop: 4, opacity: 0.8,
-                  }}>
-                    ● {defPrio.label}
+                <span style={{ fontSize: 13, fontWeight: 600, color: isParentActive ? '#00d9b8' : '#7a9bbc', display: 'block' }}>
+                  {cat.name}
+                  {childCount > 0 && (
+                    <span style={{
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
+                      color: isParentActive ? '#00d9b8' : '#3d5068',
+                      marginLeft: 6, opacity: 0.7,
+                    }}>
+                      ▸ {childCount}
+                    </span>
+                  )}
+                </span>
+                {cat.description && (
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: isParentActive ? '#3d9e8e' : '#2d4060', display: 'block', marginTop: 3 }}>
+                    {cat.description}
                   </span>
                 )}
               </button>
             )
           })}
         </div>
+
+        {/* Subcategories — shown only when parent with children is selected */}
+        {parentId && subCategories.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
+              color: '#3d5068', letterSpacing: '0.08em', marginBottom: 8,
+            }}>
+              ▸ SUBCATEGORIA
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {subCategories.map(sub => {
+                const active = categoryId === sub.id
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => handleSubSelect(sub)}
+                    style={{
+                      padding: '9px 14px', borderRadius: 8, textAlign: 'left',
+                      background: active ? 'rgba(0,217,184,0.12)' : 'rgba(0,217,184,0.03)',
+                      border: `1px solid ${active ? 'rgba(0,217,184,0.4)' : 'rgba(0,217,184,0.12)'}`,
+                      cursor: 'pointer', transition: 'all 0.12s',
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 600, color: active ? '#00d9b8' : '#5a8aa0', display: 'block' }}>
+                      {sub.name}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </FormBlock>
 
       {/* ── Prioridade (TI only, hidden for AUXILIAR_TI) ────────── */}
@@ -273,25 +428,6 @@ export default function NewTicketForm({ categories, users, solutions, currentUse
             })}
           </div>
         </FormBlock>
-      )}
-
-      {/* Auto-priority indicator for AUXILIAR_TI */}
-      {isAux && categoryId && (
-        <div style={{
-          padding: '10px 14px', borderRadius: 8,
-          background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068' }}>
-            PRIORIDADE AUTOMÁTICA:
-          </span>
-          <span style={{
-            fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700,
-            color: priorityLabel[priority]?.color ?? '#fbbf24',
-          }}>
-            ● {priorityLabel[priority]?.label ?? 'Média'}
-          </span>
-        </div>
       )}
 
       {/* ── Solicitante ───────────────────────────────────────── */}
@@ -370,15 +506,7 @@ export default function NewTicketForm({ categories, users, solutions, currentUse
                       border: '1px solid rgba(0,217,184,0.15)',
                     }}
                   >
-                    {asset.category.icon ? (
-                      <span style={{ fontSize: 14, lineHeight: 1 }}>{asset.category.icon}</span>
-                    ) : (
-                      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#3d5068" strokeWidth={2}>
-                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round" />
-                        <line x1="8" y1="21" x2="16" y2="21" strokeLinecap="round" strokeLinejoin="round" />
-                        <line x1="12" y1="17" x2="12" y2="21" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
+                    <CategoryIcon name={asset.category.icon} size={14} color="#00d9b8" />
                     <div>
                       <span style={{
                         fontFamily: "'JetBrains Mono', monospace", fontSize: 10,

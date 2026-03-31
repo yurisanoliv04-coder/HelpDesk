@@ -14,9 +14,10 @@ const STATUSES = [
 interface StatusPanelProps {
   ticketId: string
   currentStatus: string
+  readOnly?: boolean
 }
 
-export default function StatusPanel({ ticketId, currentStatus }: StatusPanelProps) {
+export default function StatusPanel({ ticketId, currentStatus, readOnly = false }: StatusPanelProps) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
@@ -37,6 +38,51 @@ export default function StatusPanel({ ticketId, currentStatus }: StatusPanelProp
     finally { setLoading(null) }
   }
 
+  const current = STATUSES.find(s => s.value === currentStatus) ?? STATUSES[0]
+
+  // ── Read-only view (AUXILIAR_TI) ────────────────────────────────────────
+  if (readOnly) {
+    return (
+      <div style={{
+        background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 10, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 7,
+            background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+            </svg>
+          </div>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#7a9bbc', letterSpacing: '0.06em' }}>
+            STATUS
+          </span>
+        </div>
+
+        {/* Single status badge */}
+        <div style={{
+          padding: '10px 14px',
+          background: current.bg, border: `1px solid ${current.border}`,
+          borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 700,
+            color: current.color,
+          }}>
+            {current.label}
+          </span>
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke={current.color} strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Editable view (TECNICO / ADMIN) ─────────────────────────────────────
   return (
     <div style={{
       background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',

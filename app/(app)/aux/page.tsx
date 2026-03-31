@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { CategoryIcon } from '@/components/ui/CategoryIcon'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -491,9 +492,7 @@ export default async function AuxPage() {
                               border: '1px solid rgba(255,255,255,0.07)',
                             }}
                           >
-                            {asset.category.icon && (
-                              <span style={{ fontSize: 11, lineHeight: 1 }}>{asset.category.icon}</span>
-                            )}
+                            <CategoryIcon name={asset.category.icon} size={12} color="#4a6580" />
                             <span style={{
                               fontFamily: "'JetBrains Mono', monospace", fontSize: 9,
                               color: '#4a6580', fontWeight: 600,

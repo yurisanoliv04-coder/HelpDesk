@@ -56,12 +56,12 @@ export function TicketRowModern({
   })
 
   const handleEnter = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
-    e.currentTarget.style.background  = '#111927'
+    e.currentTarget.style.borderColor = 'var(--border-hover)'
+    e.currentTarget.style.background  = 'var(--bg-hover)'
   }
   const handleLeave = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
-    e.currentTarget.style.background  = '#0d1422'
+    e.currentTarget.style.borderColor = 'var(--border)'
+    e.currentTarget.style.background  = 'var(--bg-surface)'
   }
 
   return (
@@ -71,8 +71,8 @@ export function TicketRowModern({
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
         style={{
-          background: '#0d1422',
-          border: '1px solid rgba(255,255,255,0.06)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
           borderRadius: 6,
           overflow: 'hidden',
           display: 'flex',
@@ -93,7 +93,7 @@ export function TicketRowModern({
             <p style={{
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: 13, fontWeight: 600,
-              color: '#00d9b8', letterSpacing: '0.02em',
+              color: 'var(--accent-cyan)', letterSpacing: '0.02em',
             }}>
               {shortCode(code)}
             </p>
@@ -110,12 +110,12 @@ export function TicketRowModern({
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{
               fontSize: 14, fontWeight: 500,
-              color: '#cbd5e1',
+              color: 'var(--text-primary)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {title}
             </p>
-            <p style={{ fontSize: 12, color: '#3d5068', marginTop: 4 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
               {requesterName} · {timeAgo}
             </p>
           </div>
@@ -123,7 +123,7 @@ export function TicketRowModern({
           {/* Assignee */}
           <div className="hidden md:block" style={{ flexShrink: 0, width: 140 }}>
             {assigneeName ? (
-              <p style={{ fontSize: 13, color: '#64748b' }}>{assigneeName}</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{assigneeName}</p>
             ) : (
               <p style={{
                 fontSize: 12, fontFamily: "'JetBrains Mono', monospace",
@@ -140,7 +140,7 @@ export function TicketRowModern({
               <span style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 width: 20, height: 20, borderRadius: '50%',
-                background: '#00d9b8', color: '#070c14',
+                background: 'var(--accent-cyan)', color: 'var(--bg-base)',
                 fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
               }}>
                 {unreadCount > 9 ? '9+' : unreadCount}

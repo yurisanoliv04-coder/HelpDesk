@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import SplashScreen from '@/components/layout/SplashScreen'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -13,6 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showSplash, setShowSplash] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -30,8 +32,14 @@ export default function LoginPage() {
     if (result?.error) {
       setError('Email ou senha inválidos.')
     } else {
-      router.push(callbackUrl)
+      // Login OK → exibe splash; redirect acontece no onComplete
+      setShowSplash(true)
     }
+  }
+
+  // Splash renderizada sobre a tela de login — redireciona ao terminar
+  if (showSplash) {
+    return <SplashScreen onComplete={() => router.push(callbackUrl)} />
   }
 
   return (
@@ -92,7 +100,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Autenticando...' : 'Entrar'}
           </button>
         </form>
       </div>

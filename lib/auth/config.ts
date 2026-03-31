@@ -7,7 +7,8 @@ import { baseAuthConfig } from './base.config'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...baseAuthConfig,
-  adapter: PrismaAdapter(prisma),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: PrismaAdapter(prisma) as any,
   providers: [
     CredentialsProvider({
       name: 'credentials',

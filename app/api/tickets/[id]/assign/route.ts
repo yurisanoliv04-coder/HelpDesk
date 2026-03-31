@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/middleware'
 import { prisma } from '@/lib/db/prisma'
 import { ok, err } from '@/lib/utils/api'
-import { broadcastToUser } from '@/app/api/realtime/route'
+import { broadcastToUser } from '@/lib/realtime/clients'
 
 export const POST = withAuth(
   async (req: Request, ctx: { params: Promise<{ id: string }> }, session: any) => {

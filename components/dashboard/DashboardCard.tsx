@@ -51,7 +51,7 @@ export function DashboardCard({
     e.currentTarget.style.boxShadow = `0 0 28px ${accent}0d`
   }
   const handleLeave = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
+    e.currentTarget.style.borderColor = 'var(--border)'
     e.currentTarget.style.boxShadow = 'none'
   }
 
@@ -60,8 +60,8 @@ export function DashboardCard({
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       style={{
-        background: '#0d1422',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
         borderRadius: 8,
         padding: '22px 24px',
         position: 'relative',
@@ -86,13 +86,13 @@ export function DashboardCard({
           <p style={{
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 11, fontWeight: 600,
-            letterSpacing: '0.1em', color: '#3d5068',
+            letterSpacing: '0.1em', color: 'var(--text-dim)',
             textTransform: 'uppercase' as const,
           }}>
             {title}
           </p>
           {subtitle && (
-            <p style={{ fontSize: 12, color: '#4d6075', marginTop: 3 }}>{subtitle}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 3 }}>{subtitle}</p>
           )}
         </div>
         <span style={{ color: accent, opacity: 0.75 }}>{icons[icon]}</span>
@@ -103,7 +103,7 @@ export function DashboardCard({
         <p style={{
           fontFamily: "'JetBrains Mono', monospace",
           fontSize: 44, fontWeight: 700,
-          color: '#e2e8f0', lineHeight: 1,
+          color: 'var(--text-primary)', lineHeight: 1,
           letterSpacing: '-0.02em',
         }}>
           {value}

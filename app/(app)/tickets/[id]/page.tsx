@@ -6,6 +6,8 @@ import AssignPanel from '@/components/tickets/AssignPanel'
 import StatusPanel from '@/components/tickets/StatusPanel'
 import MessageComposer from '@/components/tickets/MessageComposer'
 import SolutionPanel from '@/components/tickets/SolutionPanel'
+import TicketAssetActionsPanel from '@/components/tickets/TicketAssetActionsPanel'
+import TicketHistoryPanel from '@/components/tickets/TicketHistoryPanel'
 
 // ── config maps ───────────────────────────────────────────────
 const statusConfig: Record<string, { color: string; bg: string; border: string; label: string; glow: string }> = {
@@ -21,20 +23,7 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
   HIGH:   { color: '#fb923c', label: 'Alta' },
   URGENT: { color: '#f87171', label: 'Urgente' },
 }
-const eventLabel: Record<string, string> = {
-  CREATED: 'Chamado criado', STATUS_CHANGED: 'Status alterado',
-  PRIORITY_CHANGED: 'Prioridade alterada', ASSIGNED: 'Técnico atribuído', UNASSIGNED: 'Técnico removido',
-  COLLABORATOR_ADDED: 'Colaborador adicionado', COLLABORATOR_REMOVED: 'Colaborador removido',
-  COMMENTED: 'Mensagem adicionada', NOTE_ADDED: 'Nota adicionada',
-  SOLUTION_ADDED: 'Solução registrada', MOVEMENT_LINKED: 'Ordem de movimentação criada',
-  MOVEMENT_COMPLETED: 'Ordem concluída', CLOSED: 'Chamado encerrado', REOPENED: 'Chamado reaberto',
-}
-const eventDotColor: Record<string, string> = {
-  CREATED: '#a78bfa', ASSIGNED: '#38bdf8', CLOSED: '#34d399', REOPENED: '#fb923c',
-  CANCELED: '#f87171', STATUS_CHANGED: '#f59e0b', COMMENTED: '#475569',
-  NOTE_ADDED: '#fbbf24', SOLUTION_ADDED: '#34d399', COLLABORATOR_ADDED: '#8b5cf6',
-  COLLABORATOR_REMOVED: '#f87171',
-}
+
 const visibilityLabel: Record<string, { label: string; color: string; icon: string }> = {
   PUBLIC:      { label: 'Público',         color: '#475569', icon: '🌐' },
   TECHNICIANS: { label: 'Técnicos',        color: '#38bdf8', icon: '🔒' },
@@ -65,7 +54,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
   const session = await auth()
   const { id } = await params
 
-  const [ticket, technicians] = await Promise.all([
+  const [ticket, technicians, allUsers] = await Promise.all([
     prisma.ticket.findUnique({
       where: { id },
       include: {
@@ -97,11 +86,18 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
       select: { id: true, name: true, role: true },
       orderBy: { name: 'asc' },
     }),
+    prisma.user.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
   ])
 
   if (!ticket) notFound()
 
-  const isTI = ['TECNICO', 'ADMIN', 'AUXILIAR_TI'].includes(session?.user.role ?? '')
+  const isTI       = ['TECNICO', 'ADMIN', 'AUXILIAR_TI'].includes(session?.user.role ?? '')
+  const isAuxiliar = session?.user.role === 'AUXILIAR_TI'
+  const canEdit    = ['TECNICO', 'ADMIN'].includes(session?.user.role ?? '')
   const isOwner = ticket.requesterId === session?.user.id || ticket.openedById === session?.user.id
   if (!isOwner && !isTI) redirect('/tickets')
 
@@ -150,106 +146,109 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
         )}
       </div>
 
-      {/* Header card — colored left border by status */}
-      <div style={{
-        background: '#0d1422',
-        border: '1px solid rgba(255,255,255,0.07)',
-        borderLeft: `3px solid ${sc.color}`,
-        borderRadius: 12, padding: 24,
-        boxShadow: `0 0 40px ${sc.glow}`,
-      }}>
-        {/* Badges row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 800, color: sc.color }}>
-            {shortCode(ticket.code)}
-          </span>
-          <span style={{
-            fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
-            color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`,
-            padding: '3px 11px', borderRadius: 20,
+      {/* Body: header + chat on left, sidebar on right */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 310px', gap: 20, alignItems: 'start' }}>
+
+        {/* ── Left col: header card + messages ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Header card */}
+          <div style={{
+            background: '#0d1422',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderLeft: `3px solid ${sc.color}`,
+            borderRadius: 12, padding: '18px 22px',
+            boxShadow: `0 0 40px ${sc.glow}`,
           }}>
-            {sc.label}
-          </span>
-          <span style={{
-            fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
-            color: pc.color, background: `${pc.color}18`, border: `1px solid ${pc.color}30`,
-            padding: '3px 11px', borderRadius: 20,
-            display: 'flex', alignItems: 'center', gap: 5,
-          }}>
-            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: pc.color }} />
-            {pc.label}
-          </span>
-          {ticket.category && (
-            <span style={{
-              fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
-              color: '#4a6580', background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              padding: '3px 11px', borderRadius: 20,
-            }}>
-              {ticket.category.name}
-            </span>
-          )}
-        </div>
-
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#e2eaf4', lineHeight: 1.3, marginBottom: 22 }}>
-          {ticket.title}
-        </h1>
-
-        {/* Meta grid */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-          gap: '16px 24px', paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)',
-        }}>
-          <MetaField label="Solicitante"  value={ticket.requester.name}  sub={ticket.requester.email} accentColor={avatarColor(ticket.requester.name)} />
-          <MetaField label="Aberto por"   value={ticket.openedBy?.name ?? ticket.requester.name} />
-          <MetaField label="Técnico"      value={ticket.assignee?.name ?? 'Não atribuído'} empty={!ticket.assignee} accentColor={ticket.assignee ? avatarColor(ticket.assignee.name) : undefined} />
-          <MetaField label="Departamento" value={ticket.department?.name ?? '—'} empty={!ticket.department} />
-          <MetaField label="Aberto em"    value={formatDate(ticket.createdAt)} />
-          {ticket.slaResolutionDue && (
-            <MetaField label="Prazo SLA" value={formatDate(ticket.slaResolutionDue)} highlight={!!isSlaWarning} />
-          )}
-          {ticket.closedAt && <MetaField label="Encerrado em" value={formatDate(ticket.closedAt)} />}
-        </div>
-
-        {/* Collaborators chips */}
-        {ticket.collaborators.length > 0 && (
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068' }}>COLABORADORES</span>
-            {ticket.collaborators.map(c => {
-              const color = avatarColor(c.user.name)
-              return (
-                <span key={c.userId} style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  background: `${color}15`, border: `1px solid ${color}30`,
-                  borderRadius: 20, padding: '3px 10px',
-                  fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color,
+            {/* Badges row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 800, color: sc.color }}>
+                {shortCode(ticket.code)}
+              </span>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+                color: sc.color, background: sc.bg, border: `1px solid ${sc.border}`,
+                padding: '3px 11px', borderRadius: 20,
+              }}>
+                {sc.label}
+              </span>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700,
+                color: pc.color, background: `${pc.color}18`, border: `1px solid ${pc.color}30`,
+                padding: '3px 11px', borderRadius: 20,
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: pc.color }} />
+                {pc.label}
+              </span>
+              {ticket.category && (
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 11,
+                  color: '#4a6580', background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  padding: '3px 11px', borderRadius: 20,
                 }}>
-                  <span style={{ width: 18, height: 18, borderRadius: '50%', background: `${color}30`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800 }}>
-                    {getInitials(c.user.name)}
-                  </span>
-                  {c.user.name}
+                  {ticket.category.name}
                 </span>
-              )
-            })}
+              )}
+            </div>
+
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#e2eaf4', lineHeight: 1.3, marginBottom: 18 }}>
+              {ticket.title}
+            </h1>
+
+            {/* Meta grid */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+              gap: '12px 20px', paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <MetaField label="Solicitante"  value={ticket.requester.name}  sub={ticket.requester.email} accentColor={avatarColor(ticket.requester.name)} />
+              <MetaField label="Aberto por"   value={ticket.openedBy?.name ?? ticket.requester.name} />
+              <MetaField label="Técnico"      value={ticket.assignee?.name ?? 'Não atribuído'} empty={!ticket.assignee} accentColor={ticket.assignee ? avatarColor(ticket.assignee.name) : undefined} />
+              <MetaField label="Departamento" value={ticket.department?.name ?? '—'} empty={!ticket.department} />
+              <MetaField label="Aberto em"    value={formatDate(ticket.createdAt)} />
+              {ticket.slaResolutionDue && (
+                <MetaField label="Prazo SLA" value={formatDate(ticket.slaResolutionDue)} highlight={!!isSlaWarning} />
+              )}
+              {ticket.closedAt && <MetaField label="Encerrado em" value={formatDate(ticket.closedAt)} />}
+            </div>
+
+            {/* Collaborators */}
+            {ticket.collaborators.length > 0 && (
+              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068' }}>COLABORADORES</span>
+                {ticket.collaborators.map(c => {
+                  const color = avatarColor(c.user.name)
+                  return (
+                    <span key={c.userId} style={{
+                      display: 'flex', alignItems: 'center', gap: 5,
+                      background: `${color}15`, border: `1px solid ${color}30`,
+                      borderRadius: 20, padding: '3px 10px',
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color,
+                    }}>
+                      <span style={{ width: 18, height: 18, borderRadius: '50%', background: `${color}30`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800 }}>
+                        {getInitials(c.user.name)}
+                      </span>
+                      {c.user.name}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Descrição */}
+            <div style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#2d4060', letterSpacing: '0.1em', marginBottom: 10 }}>
+                DESCRIÇÃO
+              </p>
+              <p style={{ fontSize: 14, color: '#94a3b8', whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>
+                {ticket.description}
+              </p>
+            </div>
           </div>
-        )}
 
-        {/* Descrição */}
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 700, color: '#2d4060', letterSpacing: '0.1em', marginBottom: 10 }}>
-            DESCRIÇÃO
-          </p>
-          <p style={{ fontSize: 14, color: '#94a3b8', whiteSpace: 'pre-wrap', lineHeight: 1.75 }}>
-            {ticket.description}
-          </p>
-        </div>
-      </div>
-
-      {/* Body: chat + sidebar */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 272px', gap: 20, alignItems: 'start' }}>
-
-        {/* ── Messages col ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* ── Messages ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#3d5068', letterSpacing: '0.07em' }}>
@@ -387,6 +386,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
             </div>
           )}
         </div>
+        </div>{/* end left col */}
 
         {/* ── Right sidebar ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -398,60 +398,57 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                 currentAssigneeId={ticket.assigneeId}
                 technicians={technicians}
                 sharedTechs={collaboratorsList}
+                readOnly={isAuxiliar}
               />
-              {!isClosed && <StatusPanel ticketId={id} currentStatus={ticket.status} />}
-              <SolutionPanel
+              {(!isClosed || isAuxiliar) && (
+                <StatusPanel
+                  ticketId={id}
+                  currentStatus={ticket.status}
+                  readOnly={isAuxiliar}
+                />
+              )}
+              {canEdit && (
+                <SolutionPanel
+                  ticketId={id}
+                  solutions={ticket.solutions.map(s => ({
+                    id: s.id, title: s.title, body: s.body,
+                    createdBy: { name: s.createdBy.name },
+                    createdAt: s.createdAt.toISOString(),
+                  }))}
+                />
+              )}
+              <TicketAssetActionsPanel
                 ticketId={id}
-                solutions={ticket.solutions.map(s => ({
-                  id: s.id, title: s.title, body: s.body,
-                  createdBy: { name: s.createdBy.name },
-                  createdAt: s.createdAt.toISOString(),
-                }))}
+                requesterId={ticket.requesterId}
+                requesterName={ticket.requester.name}
+                users={allUsers}
+                linkedAssets={ticket.movementOrders.flatMap(o =>
+                  o.items.map(item => ({
+                    orderId: o.id,
+                    assetTag: item.asset?.tag ?? '—',
+                    assetName: item.asset?.name ?? '—',
+                    action: item.action,
+                    orderStatus: o.status,
+                  }))
+                )}
+                readOnly={isAuxiliar}
               />
             </>
           )}
 
-          {/* Histórico */}
-          <div style={{
-            background: '#0d1422', border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 10, padding: 16,
-          }}>
-            <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: '#7a9bbc', letterSpacing: '0.06em', marginBottom: 16 }}>
-              HISTÓRICO
-            </p>
-            {ticket.events.length === 0 ? (
-              <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: '#2d4060' }}>Nenhum evento.</p>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: 9, top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.05)' }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {ticket.events.map(ev => {
-                    const dotC = eventDotColor[ev.type] ?? '#475569'
-                    return (
-                      <div key={ev.id} style={{ paddingLeft: 26, position: 'relative' }}>
-                        <div style={{
-                          position: 'absolute', left: 0, top: 2,
-                          width: 18, height: 18, borderRadius: '50%',
-                          background: '#0d1422', border: '1px solid rgba(255,255,255,0.08)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: dotC }} />
-                        </div>
-                        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600, color: '#7a9bbc' }}>
-                          {eventLabel[ev.type] ?? ev.type}
-                        </p>
-                        {(ev.payload as any)?.description && (
-                          <p style={{ fontSize: 11, color: '#4a6580', marginTop: 2 }}>{(ev.payload as any).description}</p>
-                        )}
-                        {ev.actor && <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#3d5068', marginTop: 2 }}>{ev.actor.name}</p>}
-                        <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: '#1e3048', marginTop: 2 }}>{timeAgo(ev.createdAt)}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Histórico — visível apenas para TECNICO e ADMIN */}
+          {canEdit && (
+            <TicketHistoryPanel
+              ticketId={id}
+              events={ticket.events.map(ev => ({
+                id: ev.id,
+                type: ev.type,
+                payload: ev.payload,
+                createdAt: ev.createdAt.toISOString(),
+                actor: ev.actor ? { id: ev.actor.id, name: ev.actor.name } : null,
+              }))}
+            />
+          )}
 
           {/* Ordens de movimentação */}
           {ticket.movementOrders.length > 0 && (

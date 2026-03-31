@@ -105,18 +105,24 @@ export function CalendarWidget({ userId }: CalendarWidgetProps) {
 
   const eventsForDate = (dateKey: string) => events.filter(e => e.date === dateKey)
 
+  const numWeeks = cells.length / 7
+
   return (
     <div style={{
       background: '#0d1422',
       border: '1px solid rgba(255,255,255,0.07)',
       borderRadius: 8,
       overflow: 'hidden',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '16px 18px 12px',
         borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
       }}>
         <p className="section-label">── CALENDÁRIO</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -138,9 +144,9 @@ export function CalendarWidget({ userId }: CalendarWidgetProps) {
         </div>
       </div>
 
-      <div style={{ padding: '12px 14px 14px' }}>
+      <div style={{ padding: '12px 14px 14px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {/* Day headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6, flexShrink: 0 }}>
           {PT_DAYS_SHORT.map(d => (
             <div key={d} style={{
               textAlign: 'center',
@@ -153,8 +159,15 @@ export function CalendarWidget({ userId }: CalendarWidgetProps) {
           ))}
         </div>
 
-        {/* Days grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px 1px' }}>
+        {/* Days grid — rows fill available height */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridTemplateRows: `repeat(${numWeeks}, 1fr)`,
+          gap: '2px 1px',
+          flex: 1,
+          minHeight: 0,
+        }}>
           {cells.map((day, i) => {
             if (!day) return <div key={i} />
             const dk = toDateKey(year, month, day)
@@ -185,7 +198,8 @@ export function CalendarWidget({ userId }: CalendarWidgetProps) {
                   alignItems: 'center',
                   gap: 2,
                   transition: 'background 0.1s',
-                  minHeight: 36,
+                  minHeight: 0,
+                  height: '100%',
                 }}
                 onMouseEnter={e => {
                   if (!isSelected && !isToday)
