@@ -100,9 +100,13 @@ interface SidebarProps {
   collapsed: boolean
   onToggle: () => void
   onOpenSearch: () => void
+  onOpenSystemConfig?: () => void
+  systemName?: string
+  companyName?: string
+  systemLogo?: string | null
 }
 
-export default function Sidebar({ userName, userRole, userInitials, collapsed, onToggle, onOpenSearch }: SidebarProps) {
+export default function Sidebar({ userName, userRole, userInitials, collapsed, onToggle, onOpenSearch, onOpenSystemConfig, systemName = 'HelpDesk', companyName = 'Itamarathy', systemLogo }: SidebarProps) {
   const pathname = usePathname()
 
   const visibleItems = navItems.filter(
@@ -122,33 +126,49 @@ export default function Sidebar({ userName, userRole, userInitials, collapsed, o
       }}
       className="fixed inset-y-0 left-0 flex flex-col z-30"
     >
-      {/* ── Logo ───────────────────────────────────────────── */}
+      {/* ── Logo (clicável para ADMIN → abre config do sistema) ─── */}
       <div
         style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', minHeight: 57 }}
         className="px-3 py-4 flex items-center"
       >
-        <div
+        <button
+          onClick={onOpenSystemConfig}
+          title={collapsed ? `${systemName} — Configurações do sistema` : 'Configurações do sistema'}
+          disabled={!onOpenSystemConfig}
           style={{
-            background: 'linear-gradient(135deg, var(--accent-cyan) 0%, #0ea5e9 100%)',
-            boxShadow: '0 0 16px var(--accent-glow)',
-            flexShrink: 0,
+            display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10,
+            background: 'none', border: 'none', padding: 0,
+            cursor: onOpenSystemConfig ? 'pointer' : 'default',
+            width: '100%', textAlign: 'left',
           }}
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
         >
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        </div>
-        {!collapsed && (
-          <div style={{ marginLeft: 10, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            <p style={{ color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 14, lineHeight: 1 }}>
-              HelpDesk
-            </p>
-            <p style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
-              v2.0 · Itamarathy
-            </p>
+          <div
+            style={{
+              background: systemLogo ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg, var(--accent-cyan) 0%, #0ea5e9 100%)',
+              boxShadow: systemLogo ? 'none' : '0 0 16px var(--accent-glow)',
+              flexShrink: 0, width: 32, height: 32, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
+            }}
+          >
+            {systemLogo
+              ? <img src={systemLogo} alt={systemName} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 4 }} />
+              : <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            }
           </div>
-        )}
+          {!collapsed && (
+            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              <p style={{ color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: 14, lineHeight: 1 }}>
+                {systemName}
+              </p>
+              <p style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 3, fontFamily: "'JetBrains Mono', monospace" }}>
+                v2.0 · {companyName}
+              </p>
+            </div>
+          )}
+        </button>
       </div>
 
       {/* ── Search button ───────────────────────────────────── */}

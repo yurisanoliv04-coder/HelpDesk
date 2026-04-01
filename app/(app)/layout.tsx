@@ -2,6 +2,7 @@ import { auth } from '@/lib/auth/config'
 import { redirect } from 'next/navigation'
 import AppLayoutClient from '@/components/layout/AppLayoutClient'
 import RealtimeToast from '@/components/realtime/RealtimeToast'
+import { getSystemIdentity } from '@/app/(app)/settings/system-actions'
 
 function getInitials(name: string): string {
   return name
@@ -20,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const { name, role, id } = session.user
+  const identity = await getSystemIdentity()
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-base)' }}>
@@ -27,6 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userName={name ?? ''}
         userRole={role}
         userInitials={getInitials(name ?? 'U')}
+        systemName={identity.systemName}
+        companyName={identity.companyName}
+        systemLogo={identity.systemLogo}
       >
         {children}
       </AppLayoutClient>
