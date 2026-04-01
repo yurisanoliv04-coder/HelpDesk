@@ -19,7 +19,7 @@ interface RealtimeToastProps {
 }
 
 // ─── Web Audio API ───────────────────────────────────────────
-function playSound(variant: 'new_ticket' | 'message' | 'status' | 'assigned') {
+function playSound(variant: 'new_ticket' | 'message' | 'status' | 'assigned' | 'escalation') {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
 
@@ -47,6 +47,10 @@ function playSound(variant: 'new_ticket' | 'message' | 'status' | 'assigned') {
       // Tom grave + agudo — atribuição
       note(440, 0,    0.12, 0.2)
       note(660, 0.13, 0.22, 0.2)
+    } else if (variant === 'escalation') {
+      // Dois tons descendentes — sinaliza urgência
+      note(880, 0,    0.12, 0.3)
+      note(660, 0.13, 0.12, 0.3)
     } else {
       // status — tom neutro
       note(550, 0, 0.2, 0.15)
@@ -86,6 +90,11 @@ const Icons: Record<string, React.ReactNode> = {
   ticket_status_changed: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  ),
+  ticket_priority_escalated: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
     </svg>
   ),
 }
@@ -187,6 +196,21 @@ export default function RealtimeToast({ userId }: RealtimeToastProps) {
             iconColor: '#7c2d12',
           })
           playSound('status')
+
+        } else if (event.type === 'ticket_priority_escalated') {
+          const { ticketId, code, newPriority } = event.payload
+          const priorityLabel: Record<string, string> = {
+            LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', URGENT: 'Urgente',
+          }
+          push({
+            id, type: event.type,
+            title: 'Prioridade elevada',
+            message: `⬆ Prioridade elevada: ${code} → ${priorityLabel[newPriority] ?? newPriority}`,
+            ticketId,
+            accent: '#f87171',
+            iconColor: '#991b1b',
+          })
+          playSound('escalation')
         }
       } catch {
         // heartbeat ou parse error — ignorar
